@@ -3,7 +3,6 @@ extends StaticBody2D
 const SpriteFactory = preload("res://scripts/sprite_factory.gd")
 const FIELD_PICKUP_SCENE = preload("res://scenes/field_pickup.tscn")
 const GEM_SCENE = preload("res://scenes/gem.tscn")
-const TREASURE_CHEST_SCENE = preload("res://scenes/treasure_chest.tscn")
 
 @export var max_health: float = 35.0
 var current_health: float = 35.0
@@ -74,13 +73,8 @@ func _break_crate() -> void:
 		entities = get_parent()
 
 	var roll = randf()
-	# 8% jackpot chance to drop a golden treasure chest!
-	if roll < 0.08:
-		var chest = TREASURE_CHEST_SCENE.instantiate()
-		chest.global_position = global_position
-		entities.call_deferred("add_child", chest)
-	# 65% chance to drop field powerup
-	elif roll < 0.73:
+	# 60% chance to drop field powerup
+	if roll < 0.60:
 		var pickup = FIELD_PICKUP_SCENE.instantiate()
 		var p_roll = randf()
 		var p_type = "gold"
@@ -95,13 +89,19 @@ func _break_crate() -> void:
 		entities.call_deferred("add_child", pickup)
 	# 27% chance for gem cluster
 	else:
-		for g in range(3):
-			var gem = GEM_SCENE.instantiate()
-			gem.xp_value = 35
-			gem.is_super_gem = true
-			var off = Vector2(randf_range(-20, 20), randf_range(-14, 14))
-			gem.global_position = global_position + off
-			entities.call_deferred("add_child", gem)
+		var cur = get_tree().current_scene
+		if cur and cur.has_method("spawn_gem"):
+			for g in range(3):
+				var off = Vector2(randf_range(-20, 20), randf_range(-14, 14))
+				cur.spawn_gem(global_position + off, 35, true)
+		else:
+			for g in range(3):
+				var gem = GEM_SCENE.instantiate()
+				gem.xp_value = 35
+				gem.is_super_gem = true
+				var off = Vector2(randf_range(-20, 20), randf_range(-14, 14))
+				gem.global_position = global_position + off
+				entities.call_deferred("add_child", gem)
 
 	queue_free()
 

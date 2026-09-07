@@ -9,6 +9,7 @@ signal boss_defeated()
 
 @export var max_health: float = 4500.0
 var current_health: float = 4500.0
+var hit_radius: float = 160.0
 
 enum State { CHASE, WINDUP, CHARGE, QUAKE }
 var current_state: State = State.CHASE
@@ -109,8 +110,8 @@ func _physics_process(delta: float) -> void:
 				current_state = State.CHASE
 				attack_cooldown = randf_range(4.0, 6.0)
 
-	# Contact damage to player
-	if dist < 48.0 and player_ref.has_method("take_damage"):
+	# Contact damage to player (Scaled for 5x Leviathan)
+	if dist < 175.0 and player_ref.has_method("take_damage"):
 		player_ref.take_damage(35.0 * delta * 2.0)
 
 	queue_redraw()
@@ -119,27 +120,27 @@ func _start_charge(target: Vector2) -> void:
 	current_state = State.WINDUP
 	charge_dir = (target - global_position).normalized()
 	if camera_node and camera_node.has_method("add_trauma"):
-		camera_node.add_trauma(0.2)
+		camera_node.add_trauma(0.25)
 
 func _start_quake() -> void:
 	current_state = State.QUAKE
 	if camera_node and camera_node.has_method("add_trauma"):
-		camera_node.add_trauma(0.3)
+		camera_node.add_trauma(0.35)
 
 func _execute_quake() -> void:
 	if sound_mgr and sound_mgr.has_method("play_shockwave"):
 		sound_mgr.play_shockwave()
 
 	if camera_node and camera_node.has_method("add_trauma"):
-		camera_node.add_trauma(0.55)
+		camera_node.add_trauma(0.7)
 
 	if particle_mgr:
-		particle_mgr.spawn_shockwave_debris(global_position, 120.0, 32)
-		particle_mgr.spawn_blood_burst(global_position, Color(3.8, 1.0, 0.2, 1.0), 24)
+		particle_mgr.spawn_shockwave_debris(global_position, 350.0, 48)
+		particle_mgr.spawn_blood_burst(global_position, Color(3.8, 1.0, 0.2, 1.0), 36)
 
-	# Shockwave knockback / damage to player if nearby
-	if player_ref and global_position.distance_to(player_ref.global_position) < 220.0:
-		player_ref.take_damage(30.0)
+	# Shockwave knockback / damage to player if nearby (scaled for 5x boss)
+	if player_ref and global_position.distance_to(player_ref.global_position) < 420.0:
+		player_ref.take_damage(35.0)
 
 func take_damage(amount: float) -> void:
 	current_health = max(0.0, current_health - amount)
@@ -152,7 +153,7 @@ func take_damage(amount: float) -> void:
 	var cur = get_tree().current_scene
 	var txt_mgr = cur.get_node_or_null("FloatingTextManager") if cur else null
 	if txt_mgr and randf() < 0.4:
-		txt_mgr.spawn_damage(global_position + Vector2(randf_range(-20, 20), randf_range(-30, 0)), amount, true)
+		txt_mgr.spawn_damage(global_position + Vector2(randf_range(-60, 60), randf_range(-220, -90)), amount, true)
 
 	if current_health <= 0.0:
 		_die()
@@ -172,13 +173,13 @@ func _die() -> void:
 		sound_mgr.play_nuke()
 
 	if camera_node and camera_node.has_method("add_trauma"):
-		camera_node.add_trauma(0.8)
+		camera_node.add_trauma(0.85)
 
 	if particle_mgr:
-		for k in range(5):
-			var off = Vector2(randf_range(-40, 40), randf_range(-40, 40))
-			particle_mgr.spawn_blood_burst(global_position + off, Color(3.8, 1.2, 0.2, 1.0), 20)
-			particle_mgr.spawn_shockwave_debris(global_position + off, 60.0, 18)
+		for k in range(8):
+			var off = Vector2(randf_range(-120, 120), randf_range(-120, 120))
+			particle_mgr.spawn_blood_burst(global_position + off, Color(3.8, 1.2, 0.2, 1.0), 24)
+			particle_mgr.spawn_shockwave_debris(global_position + off, 100.0, 20)
 
 	var entities = get_tree().current_scene.get_node_or_null("Entities")
 	if not entities:
@@ -190,26 +191,32 @@ func _die() -> void:
 	entities.call_deferred("add_child", chest)
 
 	# Drop cluster of 8 Super Gems
-	for g in range(8):
-		var gem = GEM_SCENE.instantiate()
-		gem.xp_value = 60
-		gem.is_super_gem = true
-		var angle = (TAU / 8.0) * float(g)
-		gem.global_position = global_position + Vector2(cos(angle) * 45.0, sin(angle) * 30.0)
-		entities.call_deferred("add_child", gem)
+	var cur = get_tree().current_scene
+	if cur and cur.has_method("spawn_gem"):
+		for g in range(8):
+			var angle = (TAU / 8.0) * float(g)
+			cur.spawn_gem(global_position + Vector2(cos(angle) * 75.0, sin(angle) * 50.0), 60, true)
+	else:
+		for g in range(8):
+			var gem = GEM_SCENE.instantiate()
+			gem.xp_value = 60
+			gem.is_super_gem = true
+			var angle = (TAU / 8.0) * float(g)
+			gem.global_position = global_position + Vector2(cos(angle) * 75.0, sin(angle) * 50.0)
+			entities.call_deferred("add_child", gem)
 
 	queue_free()
 
 func _draw() -> void:
 	# Warning telegraph in windup
 	if current_state == State.WINDUP:
-		var line_end = charge_dir * 350.0
-		draw_line(Vector2.ZERO, line_end, Color(3.5, 0.2, 0.2, 0.65), 3.0)
-		draw_circle(line_end, 16.0, Color(3.5, 0.2, 0.2, 0.45))
+		var line_end = charge_dir * 550.0
+		draw_line(Vector2.ZERO, line_end, Color(3.5, 0.2, 0.2, 0.65), 5.0)
+		draw_circle(line_end, 28.0, Color(3.5, 0.2, 0.2, 0.45))
 
 	if boss_tex:
 		var col = Color(5.0, 5.0, 5.0, 1.0) if hurt_flash_timer > 0.0 else Color(1.0, 1.0, 1.0, 1.0)
 		var flip = 1.0 if (player_ref and player_ref.global_position.x > global_position.x) else -1.0
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2(flip, 1.0))
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2(flip * 5.0, 5.0))
 		draw_texture(boss_tex, Vector2(-48.0, -68.0), col)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)

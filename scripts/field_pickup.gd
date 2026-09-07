@@ -1,7 +1,8 @@
-extends Node2D
+﻿extends Node2D
 
 const SpriteFactory = preload("res://scripts/sprite_factory.gd")
 const SaveManagerClass = preload("res://scripts/save_manager.gd")
+const I18nClass = preload("res://scripts/i18n.gd")
 
 @export var pickup_type: String = "nuke" # "nuke", "vacuum", "medkit", "overclock", "gold"
 
@@ -74,7 +75,7 @@ func _consume_pickup() -> void:
 			if camera_node and camera_node.has_method("add_trauma"):
 				camera_node.add_trauma(0.65)
 			if floating_txt_mgr and floating_txt_mgr.has_method("spawn_text"):
-				floating_txt_mgr.spawn_text(global_position, "💥 EMP TẬN DIỆT TOÀN BẢN ĐỒ!", Color(3.5, 1.5, 0.2, 1.0))
+				floating_txt_mgr.spawn_text(global_position, I18nClass.loc("pickup_emp"), Color(3.5, 1.5, 0.2, 1.0))
 
 		"vacuum":
 			if main_node:
@@ -82,7 +83,7 @@ func _consume_pickup() -> void:
 			if sound_mgr and sound_mgr.has_method("play_chest"):
 				sound_mgr.play_chest()
 			if floating_txt_mgr and floating_txt_mgr.has_method("spawn_text"):
-				floating_txt_mgr.spawn_text(global_position, "🧲 LỰC HÚT TOÀN BỘ NGỌC!", Color(0.4, 2.5, 3.8, 1.0))
+				floating_txt_mgr.spawn_text(global_position, I18nClass.loc("pickup_magnet"), Color(0.4, 2.5, 3.8, 1.0))
 
 		"medkit":
 			if player_ref:
@@ -93,7 +94,7 @@ func _consume_pickup() -> void:
 			if sound_mgr and sound_mgr.has_method("play_levelup"):
 				sound_mgr.play_levelup()
 			if floating_txt_mgr and floating_txt_mgr.has_method("spawn_text"):
-				floating_txt_mgr.spawn_text(global_position, "🩸 HỒI PHỤC SIÊU CẤP 100%!", Color(0.3, 3.5, 0.8, 1.0))
+				floating_txt_mgr.spawn_text(global_position, I18nClass.loc("pickup_heal"), Color(0.3, 3.5, 0.8, 1.0))
 
 		"overclock":
 			if player_ref and player_ref.has_method("trigger_overclock"):
@@ -101,7 +102,7 @@ func _consume_pickup() -> void:
 			if sound_mgr and sound_mgr.has_method("play_levelup"):
 				sound_mgr.play_levelup()
 			if floating_txt_mgr and floating_txt_mgr.has_method("spawn_text"):
-				floating_txt_mgr.spawn_text(global_position, "⚡ QUÁ TẢI TỐC ĐỘ 200%!", Color(3.5, 3.0, 0.3, 1.0))
+				floating_txt_mgr.spawn_text(global_position, I18nClass.loc("pickup_speed"), Color(3.5, 3.0, 0.3, 1.0))
 
 		"gold":
 			var nanite_amount = randi_range(35, 75)

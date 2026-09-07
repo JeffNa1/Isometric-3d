@@ -31,6 +31,14 @@ func _get_player() -> void:
 	if cur:
 		player_ref = cur.get_node_or_null("Entities/Player")
 
+func is_offscreen(pos: Vector2, margin_x: float = 780.0, margin_y: float = 480.0) -> bool:
+	if not player_ref:
+		_get_player()
+	if not player_ref or not is_instance_valid(player_ref):
+		return false
+	var diff = pos - player_ref.global_position
+	return abs(diff.x) > margin_x or abs(diff.y) > margin_y
+
 func _ready() -> void:
 	z_as_relative = false
 	z_index = 4 # Normal air particles: smoke, steam, acid bubbles, shards
@@ -64,6 +72,7 @@ func _ready() -> void:
 	p_type.resize(MAX_PARTICLES)
 
 func spawn_blood_burst(center: Vector2, col: Color, count: int = 14) -> void:
+	if is_offscreen(center): return
 	for i in range(count):
 		if active_count >= MAX_PARTICLES: break
 		var idx = active_count
@@ -80,6 +89,7 @@ func spawn_blood_burst(center: Vector2, col: Color, count: int = 14) -> void:
 		active_count += 1
 
 func spawn_directional_blood(center: Vector2, dir: Vector2, col: Color, count: int = 12) -> void:
+	if is_offscreen(center): return
 	var base_angle = dir.angle()
 	for i in range(count):
 		if active_count >= MAX_PARTICLES: break
@@ -97,6 +107,7 @@ func spawn_directional_blood(center: Vector2, dir: Vector2, col: Color, count: i
 		active_count += 1
 
 func spawn_sparks(center: Vector2, col: Color, count: int = 10) -> void:
+	if is_offscreen(center): return
 	for i in range(count):
 		if active_count >= MAX_PARTICLES: break
 		var idx = active_count
@@ -113,6 +124,7 @@ func spawn_sparks(center: Vector2, col: Color, count: int = 10) -> void:
 		active_count += 1
 
 func spawn_chitin_shards(center: Vector2, col: Color, count: int = 6) -> void:
+	if is_offscreen(center): return
 	for i in range(count):
 		if active_count >= MAX_PARTICLES: break
 		var idx = active_count
@@ -129,6 +141,7 @@ func spawn_chitin_shards(center: Vector2, col: Color, count: int = 6) -> void:
 		active_count += 1
 
 func spawn_shockwave_ring(center: Vector2, col: Color, radius: float = 30.0) -> void:
+	if is_offscreen(center, 900.0, 560.0): return
 	if active_count >= MAX_PARTICLES: return
 	var idx = active_count
 	p_pos[idx] = center
@@ -198,6 +211,7 @@ func spawn_scorch_mark(center: Vector2, col: Color) -> void:
 	active_count += 1
 
 func spawn_shockwave_debris(center: Vector2, radius: float, count: int = 18) -> void:
+	if is_offscreen(center, 900.0, 560.0): return
 	for i in range(count):
 		if active_count >= MAX_PARTICLES: break
 		var idx = active_count
@@ -214,14 +228,15 @@ func spawn_shockwave_debris(center: Vector2, radius: float, count: int = 18) -> 
 		active_count += 1
 
 func spawn_ground_splatter(center: Vector2, col: Color) -> void:
+	if is_offscreen(center): return
 	if active_count >= MAX_PARTICLES: return
 	var idx = active_count
 	p_pos[idx] = center + Vector2(randf_range(-8, 8), randf_range(-4, 4))
 	p_vel[idx] = Vector2.ZERO
 	p_color[idx] = Color(col.r * 0.35, col.g * 0.35, col.b * 0.35, 0.65)
-	p_life[idx] = randf_range(6.0, 12.0)
+	p_life[idx] = randf_range(2.2, 3.8)
 	p_max_life[idx] = p_life[idx]
-	p_size[idx] = randf_range(8.0, 15.0)
+	p_size[idx] = randf_range(7.0, 13.0)
 	p_growth[idx] = 0.0
 	p_type[idx] = 3
 	active_count += 1
@@ -322,6 +337,7 @@ func spawn_ion_cloud(p1: Vector2, p2_or_col = Color(0.4, 2.4, 3.8, 1.0), p3_col_
 
 ## Bọt axit sủi bọt (Hỗ trợ thêm tham số count)
 func spawn_acid_bubble(center: Vector2, col: Color = Color(0.4, 3.5, 0.3, 1.0), count: int = 1) -> void:
+	if is_offscreen(center): return
 	for i in range(count):
 		if active_count >= MAX_PARTICLES: return
 		var idx = active_count
@@ -337,6 +353,7 @@ func spawn_acid_bubble(center: Vector2, col: Color = Color(0.4, 3.5, 0.3, 1.0), 
 
 ## Quái vật tan chảy vỡ vụn pixel (Pixel Dissolve Splatter)
 func spawn_pixel_dissolve(center: Vector2, col: Color, count: int = 16) -> void:
+	if is_offscreen(center): return
 	for i in range(count):
 		if active_count >= MAX_PARTICLES: break
 		var idx = active_count
@@ -392,15 +409,20 @@ func _on_ground_draw() -> void:
 	var p_pos_ref = player_ref.global_position if is_instance_valid(player_ref) else Vector2.ZERO
 
 	ground_canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, 0.5))
+	var drawn = 0
 	for i in range(active_count):
 		var ptype = p_type[i]
 		if ptype == 0 or ptype == 3:
-			if (p_pos[i] - p_pos_ref).length_squared() > 1562500.0:
+			var diff = p_pos[i] - p_pos_ref
+			if abs(diff.x) > 760.0 or abs(diff.y) > 460.0:
 				continue
 			var alpha = clamp(p_life[i] / p_max_life[i], 0.0, 1.0)
 			var c = p_color[i]
 			c.a *= alpha
 			ground_canvas.draw_circle(Vector2(p_pos[i].x, p_pos[i].y * 2.0), p_size[i], c)
+			drawn += 1
+			if drawn >= 600:
+				break
 	ground_canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 ## Vẽ các hạt phát sáng Additive (Neon, Lửa, Tia chớp, Embers)
@@ -411,10 +433,12 @@ func _on_additive_draw() -> void:
 		_get_player()
 	var p_pos_ref = player_ref.global_position if is_instance_valid(player_ref) else Vector2.ZERO
 
+	var drawn = 0
 	for i in range(active_count):
 		var ptype = p_type[i]
 		if ptype == 2 or ptype == 4 or ptype == 6 or ptype == 7:
-			if (p_pos[i] - p_pos_ref).length_squared() > 1562500.0:
+			var diff = p_pos[i] - p_pos_ref
+			if abs(diff.x) > 760.0 or abs(diff.y) > 460.0:
 				continue
 			var alpha = clamp(p_life[i] / p_max_life[i], 0.0, 1.0)
 			var c = p_color[i]
@@ -422,7 +446,7 @@ func _on_additive_draw() -> void:
 
 			match ptype:
 				2: # Shockwave ring
-					additive_canvas.draw_arc(p_pos[i], p_size[i], 0.0, TAU, 20, c, 3.0)
+					additive_canvas.draw_arc(p_pos[i], p_size[i], 0.0, TAU, 16, c, 3.0)
 				6: # Plasma Ember
 					var flicker = 0.8 + 0.4 * sin(p_life[i] * 25.0)
 					additive_canvas.draw_circle(p_pos[i], p_size[i] * flicker, c)
@@ -431,14 +455,19 @@ func _on_additive_draw() -> void:
 					additive_canvas.draw_rect(Rect2(p_pos[i] - Vector2(sz, sz) * 0.5, Vector2(sz, sz)), c)
 				_: # Spark / Additive flare
 					additive_canvas.draw_circle(p_pos[i], p_size[i], c)
+			drawn += 1
+			if drawn >= 800:
+				break
 
 ## Vẽ các hạt không khí thông thường (Khói, Hơi nước, Vụn, Bọt Axit)
 func _draw() -> void:
 	var p_pos_ref = player_ref.global_position if is_instance_valid(player_ref) else Vector2.ZERO
+	var drawn = 0
 	for i in range(active_count):
 		var ptype = p_type[i]
 		if ptype == 1 or ptype == 5 or ptype == 8:
-			if (p_pos[i] - p_pos_ref).length_squared() > 1562500.0:
+			var diff = p_pos[i] - p_pos_ref
+			if abs(diff.x) > 760.0 or abs(diff.y) > 460.0:
 				continue
 			var alpha = clamp(p_life[i] / p_max_life[i], 0.0, 1.0)
 			var c = p_color[i]
@@ -449,8 +478,8 @@ func _draw() -> void:
 					var spd = p_vel[i].length()
 					if spd > 0.1:
 						var v_norm = p_vel[i] / spd
-						var trail_len = min(14.0, spd * 0.035)
-						draw_line(p_pos[i] - v_norm * trail_len, p_pos[i], c, p_size[i] * 0.75)
+						var trail_len = min(12.0, spd * 0.03)
+						draw_line(p_pos[i] - v_norm * trail_len, p_pos[i], c, p_size[i] * 0.7)
 					else:
 						draw_circle(p_pos[i], p_size[i] * 0.5, c)
 				5: # Steam Plume / Smoke
@@ -458,3 +487,6 @@ func _draw() -> void:
 				8: # Acid Bubble
 					draw_circle(p_pos[i], p_size[i], c)
 					draw_circle(p_pos[i] + Vector2(-1, -1), p_size[i] * 0.35, Color(1.0, 1.0, 1.0, alpha * 0.8))
+			drawn += 1
+			if drawn >= 600:
+				break

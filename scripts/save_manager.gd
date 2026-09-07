@@ -1,4 +1,4 @@
-class_name SaveManager
+﻿class_name SaveManager
 extends RefCounted
 
 const SAVE_PATH: String = "user://save_data.json"
@@ -49,50 +49,64 @@ static var base_upgrade_costs: Dictionary = {
 	"nanite_gain": 200
 }
 
-static var upgrade_defs: Dictionary = {
-	"max_health": {"name": "LÕI SINH LỰC", "desc": "+10 Máu tối đa mỗi cấp", "icon": "hp", "unit": "+10 HP"},
-	"armor": {"name": "GIÁP COMPOSITE", "desc": "-1 Sát thương nhận vào mỗi đòn", "icon": "armor", "unit": "+1 Giáp"},
-	"regen": {"name": "NANO TỰ HỒI", "desc": "+0.5 Máu hồi mỗi giây", "icon": "regen", "unit": "+0.5 HP/s"},
-	"move_speed": {"name": "ĐỘNG CƠ PHẢN LỰC", "desc": "+5% Tốc độ di chuyển", "icon": "speed", "unit": "+5% Tốc độ"},
-	"magnet": {"name": "TRƯỜNG TỪ TÍNH", "desc": "+15% Phạm vi hút ngọc kinh nghiệm", "icon": "magnet", "unit": "+15% Tầm hút"},
-	"damage": {"name": "CHÍP XUNG KÍCH", "desc": "+3% Tổng sát thương mọi vũ khí", "icon": "damage", "unit": "+3% Sát thương"},
-	"cooldown": {"name": "BỘ LÀM MÁT LỎNG", "desc": "-2.5% Hồi chiêu mọi vũ khí", "icon": "cooldown", "unit": "-2.5% Hồi chiêu"},
-	"crit": {"name": "LĂNG KÍNH CHÍ MẠNG", "desc": "+3% Tỉ lệ chí mạng (x2.0 dmg)", "icon": "crit", "unit": "+3% Chí mạng"},
-	"rerolls": {"name": "ĐIỀU HƯỚNG TẬP LỆNH", "desc": "+1 Lượt đổi thẻ khi lên cấp", "icon": "reroll", "unit": "+1 Lượt đổi"},
-	"banishes": {"name": "GIAO THỨC TẨY TRỪ", "desc": "+1 Lượt loại bỏ thẻ vĩnh viễn trong run", "icon": "banish", "unit": "+1 Lượt bỏ"},
-	"nanite_gain": {"name": "BỘ THU NANITE", "desc": "+10% Nanites thu thập mỗi trận", "icon": "nanite", "unit": "+10% Nanite"}
-}
+const I18nClass = preload("res://scripts/i18n.gd")
 
-static var operative_defs: Dictionary = {
-	"vex": {
-		"name": "VEX - PHÁ THIÊN",
-		"title": "BÓNG MA ĐỘT KÍCH",
-		"weapon": "Railgun",
-		"desc": "+15% Tốc chạy, +10% Chí mạng, +5% Sát thương. Chuyên gia luồn lách và tỉa laser kép.",
-		"color": Color(0.2, 0.9, 1.0)
-	},
-	"pyro": {
-		"name": "PYRO - HỎA TRẬN",
-		"title": "BẬC THẦY HỎA NGỤC",
-		"weapon": "Flamethrower",
-		"desc": "+25% Phạm vi nổ/lửa, +15% HP. Thiêu đốt quét sạch mọi quái vật áp sát.",
-		"color": Color(1.0, 0.45, 0.15)
-	},
-	"volt": {
-		"name": "VOLT - LÔI TỘC",
-		"title": "THỢ SĂN SẤM SÉT",
-		"weapon": "Tesla Coil",
-		"desc": "-15% Hồi chiêu, +20% Phạm vi hút ngọc. Xả điện liên hoàn giật nát bầy đàn.",
-		"color": Color(0.9, 0.85, 0.2)
-	},
-	"colossus": {
-		"name": "COLOSSUS - KIM CƯƠNG",
-		"title": "PHÁO ĐÀI BỌC THÉP",
-		"weapon": "Blade Orbit",
-		"desc": "+4 Giáp sắt cản đòn, +50 HP tối đa, -10% Tốc chạy. Thiết giáp bất tử cận chiến.",
-		"color": Color(0.3, 1.0, 0.5)
+static var language: String = "vi"
+
+static var upgrade_defs: Dictionary = {}
+static var operative_defs: Dictionary = {}
+
+static func refresh_definitions() -> void:
+	upgrade_defs = {
+		"max_health": {"name": I18nClass.loc("up_max_health_name"), "desc": I18nClass.loc("up_max_health_desc"), "icon": "hp", "unit": I18nClass.loc("up_max_health_unit")},
+		"armor": {"name": I18nClass.loc("up_armor_name"), "desc": I18nClass.loc("up_armor_desc"), "icon": "armor", "unit": I18nClass.loc("up_armor_unit")},
+		"regen": {"name": I18nClass.loc("up_regen_name"), "desc": I18nClass.loc("up_regen_desc"), "icon": "regen", "unit": I18nClass.loc("up_regen_unit")},
+		"move_speed": {"name": I18nClass.loc("up_move_speed_name"), "desc": I18nClass.loc("up_move_speed_desc"), "icon": "speed", "unit": I18nClass.loc("up_move_speed_unit")},
+		"magnet": {"name": I18nClass.loc("up_magnet_name"), "desc": I18nClass.loc("up_magnet_desc"), "icon": "magnet", "unit": I18nClass.loc("up_magnet_unit")},
+		"damage": {"name": I18nClass.loc("up_damage_name"), "desc": I18nClass.loc("up_damage_desc"), "icon": "damage", "unit": I18nClass.loc("up_damage_unit")},
+		"cooldown": {"name": I18nClass.loc("up_cooldown_name"), "desc": I18nClass.loc("up_cooldown_desc"), "icon": "cooldown", "unit": I18nClass.loc("up_cooldown_unit")},
+		"crit": {"name": I18nClass.loc("up_crit_name"), "desc": I18nClass.loc("up_crit_desc"), "icon": "crit", "unit": I18nClass.loc("up_crit_unit")},
+		"rerolls": {"name": I18nClass.loc("up_rerolls_name"), "desc": I18nClass.loc("up_rerolls_desc"), "icon": "reroll", "unit": I18nClass.loc("up_rerolls_unit")},
+		"banishes": {"name": I18nClass.loc("up_banishes_name"), "desc": I18nClass.loc("up_banishes_desc"), "icon": "banish", "unit": I18nClass.loc("up_banishes_unit")},
+		"nanite_gain": {"name": I18nClass.loc("up_nanite_gain_name"), "desc": I18nClass.loc("up_nanite_gain_desc"), "icon": "nanite", "unit": I18nClass.loc("up_nanite_gain_unit")}
 	}
-}
+
+	operative_defs = {
+		"vex": {
+			"name": I18nClass.loc("op_vex_name"),
+			"title": I18nClass.loc("op_vex_title"),
+			"weapon": "Railgun",
+			"desc": I18nClass.loc("op_vex_desc"),
+			"color": Color(0.2, 0.9, 1.0)
+		},
+		"pyro": {
+			"name": I18nClass.loc("op_pyro_name"),
+			"title": I18nClass.loc("op_pyro_title"),
+			"weapon": "Flamethrower",
+			"desc": I18nClass.loc("op_pyro_desc"),
+			"color": Color(1.0, 0.45, 0.15)
+		},
+		"volt": {
+			"name": I18nClass.loc("op_volt_name"),
+			"title": I18nClass.loc("op_volt_title"),
+			"weapon": "Tesla Coil",
+			"desc": I18nClass.loc("op_volt_desc"),
+			"color": Color(0.9, 0.85, 0.2)
+		},
+		"colossus": {
+			"name": I18nClass.loc("op_colossus_name"),
+			"title": I18nClass.loc("op_colossus_title"),
+			"weapon": "Blade Orbit",
+			"desc": I18nClass.loc("op_colossus_desc"),
+			"color": Color(0.3, 1.0, 0.5)
+		}
+	}
+
+static func set_language(new_lang: String) -> void:
+	language = new_lang
+	I18nClass.set_language(new_lang)
+	refresh_definitions()
+	save_game()
 
 static var total_kills: int = 0
 static var best_time: float = 0.0
@@ -164,6 +178,7 @@ static func record_run_stats(run_time: float, run_kills: int) -> void:
 
 static func save_game() -> void:
 	var data = {
+		"language": language,
 		"nanites": nanites,
 		"selected_operative": selected_operative,
 		"unlocked_operatives": unlocked_operatives,
@@ -182,18 +197,24 @@ static func save_game() -> void:
 
 static func load_game() -> void:
 	if not FileAccess.file_exists(SAVE_PATH):
+		refresh_definitions()
 		return
 	var file = FileAccess.open(SAVE_PATH, FileAccess.READ)
 	if not file:
+		refresh_definitions()
 		return
 	var content = file.get_as_text()
 	file.close()
 	var test_json_conv = JSON.new()
 	var error = test_json_conv.parse(content)
 	if error != OK:
+		refresh_definitions()
 		return
 	var data = test_json_conv.data
 	if typeof(data) == TYPE_DICTIONARY:
+		language = str(data.get("language", "vi"))
+		I18nClass.set_language(language)
+		refresh_definitions()
 		nanites = int(data.get("nanites", 0))
 		selected_operative = str(data.get("selected_operative", "vex"))
 		if data.has("unlocked_operatives"):
@@ -204,4 +225,7 @@ static func load_game() -> void:
 					meta_upgrades[k] = int(data["meta_upgrades"][k])
 		total_kills = int(data.get("total_kills", 0))
 		best_time = float(data.get("best_time", 0.0))
+		total_runs = int(data.get("total_runs", 0))
+	else:
+		refresh_definitions()
 		total_runs = int(data.get("total_runs", 0))

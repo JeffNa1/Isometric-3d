@@ -145,6 +145,16 @@ func _init_multimeshes() -> void:
 		exploder_mmi.texture = SpriteFactory.create_exploder_texture()
 		exploder_mmi.material = CanvasItemMaterial.new()
 
+func clear_all() -> void:
+	active_count = 0
+	acid_projectiles.clear()
+	if crawler_mmi and crawler_mmi.multimesh: crawler_mmi.multimesh.visible_instance_count = 0
+	if scout_mmi and scout_mmi.multimesh: scout_mmi.multimesh.visible_instance_count = 0
+	if brute_mmi and brute_mmi.multimesh: brute_mmi.multimesh.visible_instance_count = 0
+	if spitter_mmi and spitter_mmi.multimesh: spitter_mmi.multimesh.visible_instance_count = 0
+	if exploder_mmi and exploder_mmi.multimesh: exploder_mmi.multimesh.visible_instance_count = 0
+	swarm_count_changed.emit(0)
+
 func spawn_enemy(spawn_pos: Vector2, enemy_type: int) -> bool:
 	if active_count >= MAX_SWARM:
 		return false
@@ -157,44 +167,44 @@ func spawn_enemy(spawn_pos: Vector2, enemy_type: int) -> bool:
 	types[idx] = enemy_type
 	attack_timers[idx] = randf_range(1.5, 3.5)
 
-	var hp_mult = 1.0 + pow(elapsed_time / 60.0, 1.25) * 0.35
-	var spd_mult = min(1.65, 1.0 + (elapsed_time / 360.0) * 0.45)
-	var dmg_mult = 1.0 + (elapsed_time / 200.0) * 0.45
+	var hp_mult = 1.0 + pow(elapsed_time / 45.0, 1.25) * 0.35
+	var spd_mult = min(1.75, 1.0 + (elapsed_time / 200.0) * 0.50)
+	var dmg_mult = 1.0 + (elapsed_time / 150.0) * 0.45
 
 	match enemy_type:
 		1: # Scout (Electric Violet)
 			var base_hp = 18.0 * hp_mult
 			max_healths[idx] = base_hp
 			healths[idx] = base_hp
-			speeds[idx] = 185.0 * spd_mult
+			speeds[idx] = 240.0 * spd_mult
 			radii[idx] = 10.0
 			damages[idx] = 5.0 * dmg_mult
 		2: # Brute (Volcanic Behemoth)
 			var base_hp = 220.0 * hp_mult
 			max_healths[idx] = base_hp
 			healths[idx] = base_hp
-			speeds[idx] = 75.0 * spd_mult
+			speeds[idx] = 120.0 * spd_mult
 			radii[idx] = 24.0
 			damages[idx] = 22.0 * dmg_mult
 		3: # Spitter (Toxic Green Ranged)
 			var base_hp = 42.0 * hp_mult
 			max_healths[idx] = base_hp
 			healths[idx] = base_hp
-			speeds[idx] = 95.0 * spd_mult
+			speeds[idx] = 145.0 * spd_mult
 			radii[idx] = 13.0
 			damages[idx] = 8.0 * dmg_mult
 		4: # Exploder (Kamikaze Orange)
 			var base_hp = 22.0 * hp_mult
 			max_healths[idx] = base_hp
 			healths[idx] = base_hp
-			speeds[idx] = 215.0 * spd_mult
+			speeds[idx] = 275.0 * spd_mult
 			radii[idx] = 11.0
 			damages[idx] = 45.0 * dmg_mult
 		_: # 0: Crawler (Crimson Popcorn)
 			var base_hp = 22.0 * hp_mult
 			max_healths[idx] = base_hp
 			healths[idx] = base_hp
-			speeds[idx] = 120.0 * spd_mult
+			speeds[idx] = 180.0 * spd_mult
 			radii[idx] = 12.0
 			damages[idx] = 7.0 * dmg_mult
 
@@ -231,11 +241,13 @@ func _physics_process(delta: float) -> void:
 		cached_bosses = get_tree().get_nodes_in_group("boss")
 		cached_crates = get_tree().get_nodes_in_group("crates")
 
-	spatial_grid.clear()
-	for i in range(active_count):
-		spatial_grid.insert(i, positions[i])
-
 	var player_pos = player_ref.global_position if is_instance_valid(player_ref) else Vector2.ZERO
+	spatial_grid.clear()
+	var max_combat_sq = 1350.0 * 1350.0
+	for i in range(active_count):
+		if positions[i].distance_squared_to(player_pos) <= max_combat_sq:
+			spatial_grid.insert(i, positions[i])
+
 	var mm_crawler = crawler_mmi.multimesh
 	var mm_scout = scout_mmi.multimesh
 	var mm_brute = brute_mmi.multimesh
@@ -259,41 +271,46 @@ func _physics_process(delta: float) -> void:
 	for i in range(active_count):
 		var pos = positions[i]
 		var to_player = player_pos - pos
-		var dist_to_player = to_player.length()
+		var dist_sq = to_player.length_squared()
 		var e_type = types[i]
 
-		# Screen Wrap for distant mobs
-		if dist_to_player > 1550.0 and e_type != 2:
-			var wrap_angle = (forward_dir.angle() if p_has_speed else randf() * TAU) + randf_range(-1.0, 1.0)
-			pos = player_pos + Vector2(cos(wrap_angle), sin(wrap_angle) * 0.75) * randf_range(880.0, 1180.0)
-			positions[i] = pos
-			velocities[i] = Vector2.ZERO
-			separation_forces[i] = Vector2.ZERO
-			to_player = player_pos - pos
-			dist_to_player = to_player.length()
+		# Screen Wrap for distant mobs (LOD: check every 16 frames for offscreen mobs)
+		if dist_sq > 2402500.0 and e_type != 2:
+			if (i + frame_idx) % 16 == 0:
+				var wrap_angle = (forward_dir.angle() if p_has_speed else randf() * TAU) + randf_range(-1.0, 1.0)
+				pos = player_pos + Vector2(cos(wrap_angle), sin(wrap_angle) * 0.75) * randf_range(880.0, 1180.0)
+				positions[i] = pos
+				velocities[i] = Vector2.ZERO
+				separation_forces[i] = Vector2.ZERO
+				to_player = player_pos - pos
+				dist_sq = to_player.length_squared()
 
-		var norm_to_player = to_player / max(0.001, dist_to_player)
-		var iso_dir = Vector2(norm_to_player.x, norm_to_player.y * 0.75).normalized()
+		# Offscreen LOD: update distant mobs at half rate
+		if dist_sq > 1322500.0 and (i + frame_idx) % 2 != 0:
+			continue
+
+		var dt = delta * 2.0 if (dist_sq > 1322500.0) else delta
+		var iso_dir = Vector2(to_player.x, to_player.y * 0.75).normalized()
 
 		# Spitter Ranged Behavior: Stays at 350-450px distance and spits acid
 		if e_type == 3:
-			if dist_to_player < 350.0:
+			if dist_sq < 122500.0:
 				iso_dir = -iso_dir # Back off
-			elif dist_to_player < 450.0:
+			elif dist_sq < 202500.0:
 				iso_dir = Vector2(-iso_dir.y, iso_dir.x) # Circle around
-			attack_timers[i] -= delta
+			attack_timers[i] -= dt
 			if attack_timers[i] <= 0.0:
 				attack_timers[i] = randf_range(2.5, 3.8)
-				_spit_acid(pos, norm_to_player)
+				_spit_acid(pos, to_player.normalized())
 
 		# Exploder Kamikaze: Detonates upon reaching player
-		if e_type == 4 and dist_to_player <= 36.0:
+		if e_type == 4 and dist_sq <= 1296.0:
 			kamikaze_kills.append(i)
 
 		var rad_i = radii[i]
 		var sep_force = separation_forces[i]
 
-		if dist_to_player < 380.0:
+		if dist_sq < 144400.0:
 			if (i + frame_idx) % 2 == 0:
 				sep_force = spatial_grid.calculate_separation(pos, rad_i, i, positions, radii, active_count, 4)
 				separation_forces[i] = sep_force
@@ -302,10 +319,11 @@ func _physics_process(delta: float) -> void:
 			sep_force = Vector2.ZERO
 
 		var target_vel = (iso_dir * speeds[i]) + sep_force
-		velocities[i] = velocities[i].move_toward(target_vel, 750.0 * delta)
-		positions[i] += velocities[i] * delta
+		velocities[i] = velocities[i].move_toward(target_vel, 950.0 * dt)
+		positions[i] += velocities[i] * dt
 
-		if dist_to_player < (rad_i + player_radius) and e_type != 4:
+		var touch_dist = rad_i + player_radius
+		if dist_sq < (touch_dist * touch_dist) and e_type != 4:
 			if is_instance_valid(player_ref) and player_ref.has_method("take_damage"):
 				player_ref.take_damage(damages[i] * delta * 2.0)
 
@@ -313,7 +331,7 @@ func _physics_process(delta: float) -> void:
 			hit_timers[i] -= delta
 
 		# MultiMesh Frustum Culling
-		if dist_to_player <= 1050.0:
+		if dist_sq <= 1102500.0:
 			var is_hit = hit_timers[i] > 0.0
 			var col = COL_HIT if is_hit else COL_WHITE
 			var rot: float = 0.0
@@ -378,17 +396,24 @@ func _physics_process(delta: float) -> void:
 				_kill_enemy(k_idx)
 
 func _spit_acid(origin: Vector2, dir: Vector2) -> void:
+	if acid_projectiles.size() >= 80:
+		return
+	var p_pos = player_ref.global_position if is_instance_valid(player_ref) else Vector2.ZERO
+	if origin.distance_squared_to(p_pos) > (850.0 * 850.0):
+		return
+
 	acid_projectiles.append({
 		"pos": origin,
 		"vel": dir * 290.0,
 		"life": 2.5
 	})
-	if sound_mgr and randf() < 0.5:
+	if sound_mgr and randf() < 0.35:
 		sound_mgr.play_acid()
 
 func _update_acid_projectiles(delta: float) -> void:
 	var p_pos = player_ref.global_position if is_instance_valid(player_ref) else Vector2.ZERO
 	var p_rad = player_radius + 6.0
+	var p_rad_sq = p_rad * p_rad
 
 	var i = 0
 	while i < acid_projectiles.size():
@@ -396,19 +421,25 @@ func _update_acid_projectiles(delta: float) -> void:
 		proj.life -= delta
 		proj.pos += proj.vel * delta
 
-		if proj.life <= 0.0:
+		var diff_player = proj.pos - p_pos
+		var dist_sq = diff_player.length_squared()
+
+		if proj.life <= 0.0 or dist_sq > (1350.0 * 1350.0):
 			acid_projectiles.remove_at(i)
 			continue
 
-		if is_instance_valid(player_ref) and proj.pos.distance_to(p_pos) <= p_rad:
+		if is_instance_valid(player_ref) and dist_sq <= p_rad_sq:
 			player_ref.take_damage(16.0)
 			if particle_mgr:
 				particle_mgr.spawn_ground_splatter(proj.pos, Color(0.4, 2.5, 0.3, 1.0))
 			acid_projectiles.remove_at(i)
 			continue
 
-		if particle_mgr and particle_mgr.has_method("spawn_acid_bubble") and randf() < 0.4:
-			particle_mgr.spawn_acid_bubble(proj.pos, Color(0.4, 3.2, 0.3, 0.85), 1)
+		# Only spawn bubble particles for on-screen projectiles and throttle when busy
+		if particle_mgr and abs(diff_player.x) <= 720.0 and abs(diff_player.y) <= 420.0:
+			var bubble_chance = 0.15 if particle_mgr.active_count > 1000 else 0.35
+			if randf() < bubble_chance:
+				particle_mgr.spawn_acid_bubble(proj.pos, Color(0.4, 3.2, 0.3, 0.85), 1)
 
 		i += 1
 
@@ -416,8 +447,12 @@ func _update_acid_projectiles(delta: float) -> void:
 		queue_redraw()
 
 func _draw() -> void:
-	# Draw acid spit balls
+	# Draw acid spit balls with frustum culling
+	var p_pos = player_ref.global_position if is_instance_valid(player_ref) else Vector2.ZERO
 	for proj in acid_projectiles:
+		var diff = proj.pos - p_pos
+		if abs(diff.x) > 740.0 or abs(diff.y) > 440.0:
+			continue
 		draw_circle(proj.pos, 5.0, Color(0.4, 3.5, 0.2, 0.95))
 		draw_circle(proj.pos, 2.5, Color(3.5, 3.5, 3.5, 1.0))
 
@@ -452,7 +487,9 @@ func damage_in_radius(center: Vector2, radius: float, damage: float, knockback: 
 
 	for b in cached_bosses:
 		if is_instance_valid(b) and b.has_method("take_damage"):
-			if b.global_position.distance_to(center) <= (radius + 34.0):
+			var b_rad = b.get("hit_radius")
+			if b_rad == null: b_rad = 34.0
+			if b.global_position.distance_to(center) <= (radius + b_rad):
 				b.take_damage(damage)
 
 	for c in cached_crates:
@@ -507,7 +544,9 @@ func damage_along_beam(start: Vector2, end: Vector2, width: float, damage: float
 			var to_b = b.global_position - start
 			var proj = to_b.dot(beam_dir)
 			if proj >= 0.0 and proj <= beam_len:
-				if abs(to_b.cross(beam_dir)) <= (half_width + 34.0):
+				var b_rad = b.get("hit_radius")
+				if b_rad == null: b_rad = 34.0
+				if abs(to_b.cross(beam_dir)) <= (half_width + b_rad):
 					b.take_damage(damage)
 
 	for c in cached_crates:
@@ -552,7 +591,10 @@ func damage_in_cone(origin: Vector2, direction: Vector2, max_dist: float, angle_
 	for b in cached_bosses:
 		if is_instance_valid(b) and b.has_method("take_damage"):
 			var diff = b.global_position - origin
-			if diff.length_squared() <= max_dist_sq:
+			var b_rad = b.get("hit_radius")
+			if b_rad == null: b_rad = 34.0
+			var eff_dist = max_dist + b_rad
+			if diff.length_squared() <= (eff_dist * eff_dist):
 				if diff.normalized().dot(norm_dir) >= min_dot:
 					b.take_damage(damage)
 
@@ -628,15 +670,17 @@ func _kill_enemy(idx: int) -> void:
 			blood_col = Color(3.5, 2.2, 0.1, 1.0)
 			shard_col = Color(3.8, 1.2, 0.05, 1.0)
 
-		var p_count = 26 if is_boss else (12 if e_type == 3 else 8)
+		var is_busy = particle_mgr.active_count > 1000
+		var p_count = (14 if is_boss else 4) if is_busy else (26 if is_boss else (12 if e_type == 3 else 8))
 		particle_mgr.spawn_blood_burst(pos, blood_col, p_count)
-		particle_mgr.spawn_chitin_shards(pos, shard_col, 14 if is_boss else 6)
-		particle_mgr.spawn_shockwave_ring(pos, blood_col * 1.3, 50.0 if is_boss else 26.0)
+		particle_mgr.spawn_chitin_shards(pos, shard_col, 8 if is_boss else (2 if is_busy else 6))
+		if is_boss or (not is_busy and randf() < 0.35):
+			particle_mgr.spawn_shockwave_ring(pos, blood_col * 1.3, 50.0 if is_boss else 26.0)
 
-		if particle_mgr.has_method("spawn_pixel_dissolve"):
-			particle_mgr.spawn_pixel_dissolve(pos, blood_col, 10 if is_boss else 5)
+		if not is_busy and particle_mgr.has_method("spawn_pixel_dissolve"):
+			particle_mgr.spawn_pixel_dissolve(pos, blood_col, 8 if is_boss else 4)
 
-		if is_boss or randf() < 0.32:
+		if is_boss or (randf() < (0.08 if is_busy else 0.25)):
 			particle_mgr.spawn_ground_splatter(pos, blood_col)
 
 	# Swap-and-pop O(1)

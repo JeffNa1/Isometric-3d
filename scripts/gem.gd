@@ -1,7 +1,12 @@
 extends Area2D
 
+signal collected(gem: Node2D)
+
 @export var xp_value: int = 10
 @export var is_super_gem: bool = false
+
+var is_active: bool = true
+var is_pooled: bool = false
 
 var target: Node2D = null
 var speed: float = 0.0
@@ -27,7 +32,38 @@ func _ready() -> void:
 	collision_mask = 0
 	add_to_group("gems")
 	_ensure_managers()
+	if is_active:
+		queue_redraw()
+
+func activate(pos: Vector2, val: int, is_super: bool = false) -> void:
+	global_position = pos
+	xp_value = val
+	is_super_gem = is_super
+	target = null
+	speed = 0.0
+	time_alive = randf() * TAU
+	bob_offset = 0.0
+	swirl_offset = Vector2.ZERO
+	is_active = true
+	visible = true
+	set_process(true)
+	_ensure_managers()
 	queue_redraw()
+
+func deactivate() -> void:
+	is_active = false
+	visible = false
+	set_process(false)
+	target = null
+
+func collect() -> void:
+	if not is_active:
+		return
+	collected.emit(self)
+	if is_pooled:
+		deactivate()
+	else:
+		queue_free()
 
 static func _ensure_managers() -> void:
 	if not is_instance_valid(player_ref) or not is_instance_valid(sound_mgr) or not is_instance_valid(particle_mgr):
@@ -73,6 +109,9 @@ func get_tier_info() -> Dictionary:
 		}
 
 func _process(delta: float) -> void:
+	if not is_active:
+		return
+
 	# If untargeted, check distance to player
 	if not target:
 		if not is_instance_valid(player_ref):
@@ -126,17 +165,21 @@ func _process(delta: float) -> void:
 					sound_mgr.play_gem_pickup()
 			if particle_mgr:
 				particle_mgr.spawn_sparks(target.global_position + Vector2(0, -18), tier.color, 4 + int(tier.scale * 3))
-			queue_free()
+			collect()
 			return
 
 		queue_redraw()
 
 func attract_to(new_target: Node2D) -> void:
+	if not is_active:
+		return
 	if not target:
 		target = new_target
 		speed = 120.0
 
 func _draw() -> void:
+	if not is_active:
+		return
 	var tier = get_tier_info()
 	var t_scale: float = tier.scale
 	var t_col: Color = tier.color

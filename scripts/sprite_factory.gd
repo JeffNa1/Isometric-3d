@@ -1154,6 +1154,29 @@ static func create_menu_icon(icon_name: String) -> ImageTexture:
 			img.set_pixel(23, 14, Color(0.3, 2.5, 3.8, 0.8))
 			img.set_pixel(25, 14, Color(0.2, 1.8, 3.0, 0.4))
 
+		"sandbox":
+			# Cyber lab flask & atomic core with neon emerald plasma
+			for y in range(5, 24):
+				var half_w = 2.0
+				if y <= 10:
+					half_w = 2.0
+				else:
+					half_w = lerp(2.0, 7.5, float(y - 10) / 13.0)
+				var min_x = int(14.0 - half_w)
+				var max_x = int(14.0 + half_w)
+				for x in range(min_x, max_x + 1):
+					var is_edge = (x == min_x or x == max_x or y == 23 or (y == 5 and abs(x - 14) <= 3))
+					if is_edge:
+						img.set_pixel(x, y, Color(0.4, 3.8, 1.6, 1.0)) # Bright emerald border
+					elif y >= 14:
+						# Boiling glowing plasma inside flask
+						var liquid_col = Color(0.1, 2.8, 1.2, 0.9)
+						if (x == 12 and y == 17) or (x == 15 and y == 19) or (x == 13 and y == 21):
+							liquid_col = Color(3.5, 3.8, 4.0, 1.0) # Sparkling energy bubbles
+						img.set_pixel(x, y, liquid_col)
+					else:
+						img.set_pixel(x, y, Color(0.06, 0.18, 0.12, 0.4))
+
 		_:
 			# Default glowing dot
 			_draw_circle_on_image(img, Vector2(14, 14), 6.0, Color(0.3, 2.5, 3.8, 1.0))

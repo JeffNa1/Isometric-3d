@@ -108,6 +108,12 @@ layout_mode = 2
 text = ""
 alignment = 0
 
+[node name="BtnSandbox" type="Button" parent="Margin/Content/LeftCol/ButtonsVBox"]
+custom_minimum_size = Vector2(400, 48)
+layout_mode = 2
+text = ""
+alignment = 0
+
 [node name="BtnOperatives" type="Button" parent="Margin/Content/LeftCol/ButtonsVBox"]
 custom_minimum_size = Vector2(400, 48)
 layout_mode = 2

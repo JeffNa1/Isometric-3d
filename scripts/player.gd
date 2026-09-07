@@ -51,6 +51,7 @@ var recoil_offset: Vector2 = Vector2.ZERO
 var sprite_scale: Vector2 = Vector2.ONE
 var step_accumulator: float = 0.0
 var overclock_timer: float = 0.0
+var hit_stop_cooldown: float = 0.0
 
 # Operative class trait
 var operative_id: String = "vex"
@@ -96,6 +97,20 @@ var evolved_weapons = {
 }
 
 func _ready() -> void:
+	var bindings = {
+		"move_left": [KEY_A, KEY_LEFT],
+		"move_right": [KEY_D, KEY_RIGHT],
+		"move_up": [KEY_W, KEY_UP],
+		"move_down": [KEY_S, KEY_DOWN]
+	}
+	for action in bindings.keys():
+		if not InputMap.has_action(action):
+			InputMap.add_action(action)
+			for k in bindings[action]:
+				var ev = InputEventKey.new()
+				ev.keycode = k
+				InputMap.action_add_event(action, ev)
+
 	SaveManagerClass.init_and_load()
 	operative_id = SaveManagerClass.selected_operative
 
@@ -180,6 +195,10 @@ func _setup_initial_weapons() -> void:
 func record_weapon_damage(w_id: String, dmg: float) -> void:
 	if weapon_damage_dealt.has(w_id):
 		weapon_damage_dealt[w_id] += dmg
+	var cur = get_tree().current_scene
+	var dps_m = cur.get_node_or_null("SandboxLayer/DPSMeter") if cur else null
+	if dps_m and dps_m.has_method("record_damage"):
+		dps_m.record_damage(dmg)
 
 func _set_weapon_active(weapon_node: Node2D, active: bool) -> void:
 	if weapon_node:
@@ -202,6 +221,9 @@ func trigger_overclock(duration: float = 10.0) -> void:
 func _physics_process(delta: float) -> void:
 	if hurt_sfx_timer > 0.0:
 		hurt_sfx_timer -= delta
+
+	if hit_stop_cooldown > 0.0:
+		hit_stop_cooldown -= delta
 
 	if invuln_timer > 0.0:
 		invuln_timer -= delta
@@ -275,27 +297,9 @@ func apply_recoil(dir: Vector2, force: float) -> void:
 	trigger_squash(Vector2(0.90, 1.14))
 	queue_redraw()
 
-func trigger_hit_stop(duration: float = 0.035) -> void:
-	if get_tree().paused:
-		return
-	get_tree().paused = true
-	await get_tree().create_timer(duration, true, false, true).timeout
-	var cur = get_tree().current_scene
-	var hud_node = cur.get_node_or_null("HUD") if cur else null
-	if hud_node:
-		var lvl_modal = hud_node.get_node_or_null("LevelUpModal")
-		if lvl_modal and lvl_modal.visible:
-			return
-		var p_modal = hud_node.get_node_or_null("PauseModal")
-		if p_modal and p_modal.visible:
-			return
-		var ch_modal = hud_node.get_node_or_null("ChestModal")
-		if ch_modal and ch_modal.visible:
-			return
-		var go_modal = hud_node.get_node_or_null("GameOverModal")
-		if go_modal and go_modal.visible:
-			return
-	get_tree().paused = false
+func trigger_hit_stop(_duration: float = 0.0) -> void:
+	# Disabled to prevent micro-stuttering and preserve silky 60 FPS
+	pass
 
 func roll_crit(base_dmg: float) -> Dictionary:
 	var is_crit = randf() < crit_chance
@@ -333,7 +337,6 @@ func take_damage(amount: float) -> void:
 		if cur and cur.has_method("trigger_chromatic_aberration_pulse"):
 			cur.trigger_chromatic_aberration_pulse(0.02, 0.15)
 
-		trigger_hit_stop(0.03)
 		queue_redraw()
 
 	if current_health <= 0.0:
@@ -482,6 +485,155 @@ func apply_upgrade(upgrade_id: String) -> void:
 		"amp":
 			passive_levels["amp"] = min(5, passive_levels["amp"] + 1)
 			damage_multiplier += 0.20
+
+func get_weapon_node(w_id: String) -> Node2D:
+	match w_id:
+		"railgun": return railgun_weapon
+		"flame": return flame_weapon
+		"shockwave": return shockwave_weapon
+		"missile": return missile_weapon
+		"blade": return blade_weapon
+		"tesla": return tesla_weapon
+		"mortar": return mortar_weapon
+	return null
+
+func set_weapon_level(w_id: String, target_lvl: int, is_evo: bool = false) -> void:
+	target_lvl = clampi(target_lvl, 0, 5)
+	var node = get_weapon_node(w_id)
+	if not node:
+		return
+
+	if target_lvl == 0:
+		weapon_levels[w_id] = 0
+		evolved_weapons[w_id] = false
+		_set_weapon_active(node, false)
+		return
+
+	_set_weapon_active(node, true)
+	weapon_levels[w_id] = target_lvl
+
+	match w_id:
+		"railgun":
+			if node.has_method("upgrade_beam"):
+				for i in range(target_lvl - 1): node.upgrade_beam()
+			if is_evo and node.has_method("evolve_hyperion"):
+				evolved_weapons[w_id] = true
+				node.evolve_hyperion()
+			else:
+				evolved_weapons[w_id] = false
+		"flame":
+			if node.has_method("upgrade_flame"):
+				for i in range(target_lvl - 1): node.upgrade_flame()
+			if is_evo and node.has_method("evolve_sunstorm"):
+				evolved_weapons[w_id] = true
+				node.evolve_sunstorm()
+			else:
+				evolved_weapons[w_id] = false
+		"shockwave":
+			if node.has_method("upgrade_blast"):
+				for i in range(target_lvl - 1): node.upgrade_blast()
+			if is_evo and node.has_method("evolve_supernova"):
+				evolved_weapons[w_id] = true
+				node.evolve_supernova()
+			else:
+				evolved_weapons[w_id] = false
+		"missile":
+			if node.has_method("upgrade_missile"):
+				for i in range(target_lvl - 1): node.upgrade_missile()
+			if is_evo and node.has_method("evolve_barrage"):
+				evolved_weapons[w_id] = true
+				node.evolve_barrage()
+			else:
+				evolved_weapons[w_id] = false
+		"blade":
+			if node.has_method("upgrade_blade"):
+				for i in range(target_lvl - 1): node.upgrade_blade()
+			if is_evo and node.has_method("evolve_vortex"):
+				evolved_weapons[w_id] = true
+				node.evolve_vortex()
+			else:
+				evolved_weapons[w_id] = false
+		"tesla":
+			if node.has_method("upgrade_tesla"):
+				for i in range(target_lvl - 1): node.upgrade_tesla()
+			if is_evo and node.has_method("evolve_mjolnir"):
+				evolved_weapons[w_id] = true
+				node.evolve_mjolnir()
+			else:
+				evolved_weapons[w_id] = false
+		"mortar":
+			if node.has_method("upgrade_mortar"):
+				for i in range(target_lvl - 1): node.upgrade_mortar()
+			if is_evo and node.has_method("evolve_chernobyl"):
+				evolved_weapons[w_id] = true
+				node.evolve_chernobyl()
+			else:
+				evolved_weapons[w_id] = false
+
+func set_passive_level(p_id: String, target_lvl: int) -> void:
+	target_lvl = clampi(target_lvl, 0, 5)
+	passive_levels[p_id] = target_lvl
+	_recalculate_passives()
+
+func _recalculate_passives() -> void:
+	move_speed = 250.0
+	max_health = 100.0
+	armor = 0.0
+	pickup_radius = 48.0
+	damage_multiplier = 1.0
+
+	_apply_meta_progression()
+	_apply_operative_traits()
+
+	for i in range(passive_levels["energy_core"]):
+		if railgun_weapon and railgun_weapon.has_method("upgrade_speed"): railgun_weapon.upgrade_speed(0.88)
+		if shockwave_weapon: shockwave_weapon.cooldown = max(0.8, shockwave_weapon.cooldown * 0.88)
+		if missile_weapon and missile_weapon.has_method("upgrade_speed"): missile_weapon.upgrade_speed(0.88)
+		if tesla_weapon and tesla_weapon.has_method("upgrade_speed"): tesla_weapon.upgrade_speed(0.88)
+		if mortar_weapon and mortar_weapon.has_method("upgrade_speed"): mortar_weapon.upgrade_speed(0.88)
+
+	for i in range(passive_levels["nano_armor"]):
+		max_health += 30.0
+		armor += 1.0
+
+	for i in range(passive_levels["thrusters"]):
+		move_speed += 35.0
+
+	for i in range(passive_levels["magnet"]):
+		pickup_radius += 20.0
+
+	for i in range(passive_levels["amp"]):
+		damage_multiplier += 0.20
+
+	current_health = min(current_health, max_health)
+	health_changed.emit(current_health, max_health)
+
+func max_all_upgrades() -> void:
+	for w in weapon_levels.keys():
+		set_weapon_level(w, 5, true)
+	for p in passive_levels.keys():
+		set_passive_level(p, 5)
+
+func reset_all_upgrades() -> void:
+	for w in weapon_levels.keys():
+		set_weapon_level(w, 0, false)
+	for p in passive_levels.keys():
+		set_passive_level(p, 0)
+
+	match operative_id:
+		"pyro": set_weapon_level("flame", 1, false)
+		"volt": set_weapon_level("tesla", 1, false)
+		"colossus": set_weapon_level("blade", 1, false)
+		_: set_weapon_level("railgun", 1, false)
+
+func toggle_godmode(enabled: bool) -> void:
+	is_invulnerable = enabled
+	if enabled:
+		invuln_timer = 999999.0
+		current_health = max_health
+		health_changed.emit(current_health, max_health)
+	else:
+		invuln_timer = 0.0
 
 func _draw() -> void:
 	# 1. BÓNG ĐỔ ISOMETRIC 2:1 ĐỘC LẬP TẠI MẶT SÀN (Ground Contact Plane)

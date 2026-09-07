@@ -3,6 +3,7 @@ extends Control
 
 const SpriteFactory = preload("res://scripts/sprite_factory.gd")
 const SaveManagerClass = preload("res://scripts/save_manager.gd")
+const I18nClass = preload("res://scripts/i18n.gd")
 
 # Sound manager instance
 var sound_mgr: Node = null
@@ -21,6 +22,7 @@ var is_transitioning: bool = false
 static var master_volume: float = 1.0
 static var screen_shake_intensity: float = 1.0
 static var show_damage_numbers: bool = true
+static var is_sandbox_mode: bool = false
 
 # UI Node References
 @onready var bg_overlay: Control = $BackgroundOverlay
@@ -30,6 +32,7 @@ static var show_damage_numbers: bool = true
 @onready var buttons_vbox: VBoxContainer = $Margin/Content/LeftCol/ButtonsVBox
 
 @onready var btn_play: Button = $Margin/Content/LeftCol/ButtonsVBox/BtnPlay
+@onready var btn_sandbox: Button = $Margin/Content/LeftCol/ButtonsVBox/BtnSandbox
 @onready var btn_operatives: Button = $Margin/Content/LeftCol/ButtonsVBox/BtnOperatives
 @onready var btn_armory: Button = $Margin/Content/LeftCol/ButtonsVBox/BtnArmory
 @onready var btn_how_to_play: Button = $Margin/Content/LeftCol/ButtonsVBox/BtnHowToPlay
@@ -58,6 +61,9 @@ static var show_damage_numbers: bool = true
 @onready var shake_label: Label = $SettingsModal/VBox/ShakeRow/ShakeValue
 @onready var dmg_num_btn: Button = $SettingsModal/VBox/DmgNumRow/DmgNumToggle
 @onready var btn_settings_back: Button = $SettingsModal/VBox/BtnSettingsBack
+var lang_row: HBoxContainer = null
+var lang_label: Label = null
+var lang_btn: Button = null
 
 # Transition Overlay
 @onready var transition_rect: ColorRect = $TransitionRect
@@ -66,6 +72,7 @@ static var show_damage_numbers: bool = true
 var btn_scales: Dictionary = {}
 var btn_target_scales: Dictionary = {}
 var btn_chevrons: Dictionary = {}
+var btn_labels: Dictionary = {}
 
 func _ready() -> void:
 	# Force window to center and bring to foreground on the active screen
@@ -89,7 +96,7 @@ func _ready() -> void:
 	_init_background_elements()
 	_setup_button_visuals_and_signals()
 	_setup_modals()
-	_update_stats_display()
+	_refresh_all_ui_text()
 
 	if transition_rect:
 		transition_rect.visible = true
@@ -125,14 +132,17 @@ func _init_background_elements() -> void:
 
 func _setup_button_visuals_and_signals() -> void:
 	var buttons = [
-		{"btn": btn_play, "code": "01", "title": "CHIẾN DỊCH MỚI", "desc": "Bắt đầu cuộc chiến sinh tồn vô tận", "icon": "play", "color": Color(0.2, 2.8, 3.8, 1.0)},
-		{"btn": btn_operatives, "code": "02", "title": "CHỌN CHIẾN BINH", "desc": "4 Đặc nhiệm: Vex, Pyro, Volt, Colossus", "icon": "evolution", "color": Color(0.4, 2.6, 3.8, 1.0)},
-		{"btn": btn_armory, "code": "03", "title": "KHO CÔNG NGHỆ CYBER", "desc": "Nâng cấp vĩnh viễn 11 chỉ số tác chiến", "icon": "chest", "color": Color(3.8, 2.2, 0.4, 1.0)},
-		{"btn": btn_how_to_play, "code": "04", "title": "CẨM NANG SINH TỒN", "desc": "Hệ thống vũ khí, tiến hóa & di chuyển", "icon": "how_to_play", "color": Color(0.2, 3.5, 1.8, 1.0)},
-		{"btn": btn_settings, "code": "05", "title": "THIẾT LẬP HỆ THỐNG", "desc": "Âm lượng, rung chấn & số sát thương", "icon": "settings", "color": Color(3.5, 2.4, 0.4, 1.0)},
-		{"btn": btn_credits, "code": "06", "title": "DANH THẦN & ĐỘI NGŨ", "desc": "Bản quyền & đội ngũ phát triển game", "icon": "credits", "color": Color(3.5, 3.0, 0.6, 1.0)},
-		{"btn": btn_quit, "code": "07", "title": "THOÁT TRÒ CHƠI", "desc": "Lưu trạng thái & trở về desktop", "icon": "quit", "color": Color(3.8, 0.35, 0.45, 1.0)}
+		{"btn": btn_play, "code": "01", "title_key": "btn_play_title", "desc_key": "btn_play_desc", "icon": "play", "color": Color(0.2, 2.8, 3.8, 1.0)},
+		{"btn": btn_sandbox, "code": "02", "title_key": "btn_sandbox_title", "desc_key": "btn_sandbox_desc", "icon": "sandbox", "color": Color(0.2, 3.8, 1.4, 1.0)},
+		{"btn": btn_operatives, "code": "03", "title_key": "btn_operatives_title", "desc_key": "btn_operatives_desc", "icon": "evolution", "color": Color(0.4, 2.6, 3.8, 1.0)},
+		{"btn": btn_armory, "code": "04", "title_key": "btn_armory_title", "desc_key": "btn_armory_desc", "icon": "chest", "color": Color(3.8, 2.2, 0.4, 1.0)},
+		{"btn": btn_how_to_play, "code": "05", "title_key": "btn_how_to_play_title", "desc_key": "btn_how_to_play_desc", "icon": "how_to_play", "color": Color(0.2, 3.5, 1.8, 1.0)},
+		{"btn": btn_settings, "code": "06", "title_key": "btn_settings_title", "desc_key": "btn_settings_desc", "icon": "settings", "color": Color(3.5, 2.4, 0.4, 1.0)},
+		{"btn": btn_credits, "code": "07", "title_key": "btn_credits_title", "desc_key": "btn_credits_desc", "icon": "credits", "color": Color(3.5, 3.0, 0.6, 1.0)},
+		{"btn": btn_quit, "code": "08", "title_key": "btn_quit_title", "desc_key": "btn_quit_desc", "icon": "quit", "color": Color(3.8, 0.35, 0.45, 1.0)}
 	]
+
+	btn_labels.clear()
 
 	for b_data in buttons:
 		var b = b_data.btn as Button
@@ -219,18 +229,26 @@ func _setup_button_visuals_and_signals() -> void:
 		top_row.add_child(code_lbl)
 
 		var title_lbl = Label.new()
-		title_lbl.text = b_data.title
+		title_lbl.text = I18nClass.loc(b_data.title_key)
 		title_lbl.add_theme_font_size_override("font_size", 15)
 		title_lbl.add_theme_color_override("font_color", Color(0.95, 0.98, 1.0))
 		top_row.add_child(title_lbl)
 		tvbox.add_child(top_row)
 
 		var desc_lbl = Label.new()
-		desc_lbl.text = b_data.desc
+		desc_lbl.text = I18nClass.loc(b_data.desc_key)
 		desc_lbl.add_theme_font_size_override("font_size", 11)
 		desc_lbl.add_theme_color_override("font_color", Color(0.65, 0.78, 0.92, 0.75))
 		tvbox.add_child(desc_lbl)
 		hbox.add_child(tvbox)
+
+		# Save label references for dynamic language refresh
+		btn_labels[b] = {
+			"title_lbl": title_lbl,
+			"desc_lbl": desc_lbl,
+			"title_key": b_data.title_key,
+			"desc_key": b_data.desc_key
+		}
 
 		# Right sliding indicator chevron
 		var chevron = Label.new()
@@ -250,6 +268,7 @@ func _setup_button_visuals_and_signals() -> void:
 		b.mouse_exited.connect(func(): _on_button_unhover(b))
 
 	btn_play.pressed.connect(_on_play_pressed)
+	btn_sandbox.pressed.connect(_on_sandbox_pressed)
 	btn_operatives.pressed.connect(_on_operatives_pressed)
 	btn_armory.pressed.connect(_on_armory_pressed)
 	btn_how_to_play.pressed.connect(_on_how_to_play_pressed)
@@ -279,6 +298,28 @@ func _setup_modals() -> void:
 	_update_dmg_num_btn_visual()
 	dmg_num_btn.pressed.connect(_on_dmg_num_toggled)
 
+	# Language toggle row setup
+	if not lang_row:
+		lang_row = HBoxContainer.new()
+		lang_row.name = "LanguageRow"
+		lang_row.add_theme_constant_override("separation", 12)
+
+		lang_label = Label.new()
+		lang_label.custom_minimum_size = Vector2(180, 0)
+		lang_label.text = I18nClass.loc("settings_lang")
+		lang_row.add_child(lang_label)
+
+		lang_btn = Button.new()
+		lang_btn.custom_minimum_size = Vector2(140, 32)
+		lang_btn.text = I18nClass.loc("settings_lang_btn")
+		lang_btn.pressed.connect(_on_language_toggled)
+		lang_row.add_child(lang_btn)
+
+		var vbox = $SettingsModal/VBox
+		var spacer = $SettingsModal/VBox/Spacer
+		vbox.add_child(lang_row)
+		vbox.move_child(lang_row, spacer.get_index())
+
 	btn_settings_back.pressed.connect(func(): _close_modal(settings_modal))
 	$HowToPlayModal/VBox/BtnHowToPlayBack.pressed.connect(func(): _close_modal(how_to_play_modal))
 	$CreditsModal/VBox/BtnCreditsBack.pressed.connect(func(): _close_modal(credits_modal))
@@ -289,12 +330,19 @@ func _setup_modals() -> void:
 	# Populate How To Play Cards with procedural icons
 	_setup_how_to_play_cards()
 
+func _on_language_toggled() -> void:
+	if sound_mgr and sound_mgr.has_method("play_ui_click"):
+		sound_mgr.play_ui_click()
+	var new_lang = "en" if I18nClass.get_language() == "vi" else "vi"
+	SaveManagerClass.set_language(new_lang)
+	_refresh_all_ui_text()
+
 func _setup_how_to_play_cards() -> void:
 	var cards_data = [
-		{"icon": "wasd", "title": "ĐIỀU KHIỂN", "desc": "Cụm phím W-A-S-D hoặc Mũi Tên di chuyển luồn lách né quái 360°."},
-		{"icon": "auto_aim", "title": "TÁC CHIẾN", "desc": "7 Vũ khí tự động khóa mục tiêu và xả hỏa lực liên hoàn."},
-		{"icon": "chest", "title": "BẢO BỐI", "desc": "65 Hòm tiếp tế: Bom EMP xóa sạch sàn, Hút Ngọc, Siêu Máu, Quá Tải x2."},
-		{"icon": "evolution", "title": "TIẾN HÓA", "desc": "Vũ Khí Cấp 5 + Bị Động = Siêu Vũ Khí! Diệt Trùm 05:00 bú Rương Jackpot."}
+		{"icon": "wasd", "title": I18nClass.loc("how_wasd_title"), "desc": I18nClass.loc("how_wasd_desc")},
+		{"icon": "auto_aim", "title": I18nClass.loc("how_combat_title"), "desc": I18nClass.loc("how_combat_desc")},
+		{"icon": "chest", "title": I18nClass.loc("how_drops_title"), "desc": I18nClass.loc("how_drops_desc")},
+		{"icon": "evolution", "title": I18nClass.loc("how_evo_title"), "desc": I18nClass.loc("how_evo_desc")}
 	]
 
 	var container = $HowToPlayModal/VBox/CardsContainer
@@ -410,11 +458,31 @@ func _on_button_unhover(b: Button) -> void:
 func _on_play_pressed() -> void:
 	if is_transitioning: return
 	is_transitioning = true
+	is_sandbox_mode = false
 
 	if sound_mgr and sound_mgr.has_method("play_ui_click"):
 		sound_mgr.play_ui_click()
 
 	btn_target_scales[btn_play] = Vector2(0.94, 0.94)
+
+	if transition_rect:
+		transition_rect.visible = true
+		transition_rect.modulate = Color(1.0, 1.0, 1.0, 0.0)
+		var tw = create_tween()
+		tw.tween_property(transition_rect, "modulate:a", 1.0, 0.45)
+		tw.tween_callback(func():
+			get_tree().change_scene_to_file("res://scenes/main.tscn")
+		)
+
+func _on_sandbox_pressed() -> void:
+	if is_transitioning: return
+	is_transitioning = true
+	is_sandbox_mode = true
+
+	if sound_mgr and sound_mgr.has_method("play_ui_click"):
+		sound_mgr.play_ui_click()
+
+	btn_target_scales[btn_sandbox] = Vector2(0.94, 0.94)
 
 	if transition_rect:
 		transition_rect.visible = true
@@ -484,7 +552,7 @@ func _on_dmg_num_toggled() -> void:
 
 func _update_dmg_num_btn_visual() -> void:
 	if dmg_num_btn:
-		dmg_num_btn.text = " [ BẬT ] " if show_damage_numbers else " [ TẮT ] "
+		dmg_num_btn.text = I18nClass.loc("settings_dmg_on") if show_damage_numbers else I18nClass.loc("settings_dmg_off")
 		var col = Color(0.2, 3.5, 1.8, 1.0) if show_damage_numbers else Color(3.8, 0.3, 0.4, 1.0)
 		dmg_num_btn.add_theme_color_override("font_color", col)
 
@@ -510,17 +578,17 @@ func _on_refund_pressed() -> void:
 func _update_stats_display() -> void:
 	SaveManagerClass.init_and_load()
 	if nanite_label:
-		nanite_label.text = "NANITE CORES: %d 💎" % SaveManagerClass.nanites
+		nanite_label.text = I18nClass.loc("stats_nanites") % SaveManagerClass.nanites
 	if record_label:
 		var mins = int(SaveManagerClass.best_time / 60.0)
 		var secs = int(SaveManagerClass.best_time) % 60
-		record_label.text = "KỶ LỤC SINH TỒN: %02d:%02d" % [mins, secs]
+		record_label.text = I18nClass.loc("stats_record") % [mins, secs]
 	if kills_label:
-		kills_label.text = "TỔNG TIÊU DIỆT: %d QUÁI" % SaveManagerClass.total_kills
+		kills_label.text = I18nClass.loc("stats_kills") % SaveManagerClass.total_kills
 	if op_label:
 		var op_info = SaveManagerClass.operative_defs.get(SaveManagerClass.selected_operative, {})
 		var op_name = op_info.get("name", "VEX")
-		op_label.text = "CHIẾN BINH: %s" % op_name
+		op_label.text = I18nClass.loc("stats_op") % op_name
 
 func _setup_operatives_modal() -> void:
 	var container = $OperativesModal/Margin/VBox/OperativesContainer
@@ -580,7 +648,7 @@ func _setup_operatives_modal() -> void:
 		vb.add_child(avatar_rect)
 
 		var w_lbl = Label.new()
-		w_lbl.text = "⚔️ Khởi đầu: %s" % op.weapon
+		w_lbl.text = "⚔️ %s: %s" % [I18nClass.loc("how_combat_title"), op.weapon]
 		w_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		w_lbl.add_theme_font_size_override("font_size", 11)
 		w_lbl.add_theme_color_override("font_color", Color(0.4, 0.9, 1.0, 0.95))
@@ -599,10 +667,10 @@ func _setup_operatives_modal() -> void:
 		select_btn.custom_minimum_size = Vector2(180, 36)
 		select_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		if is_selected:
-			select_btn.text = "✔ ĐANG CHỌN"
+			select_btn.text = "✔ %s" % I18nClass.loc("op_selected")
 			select_btn.disabled = true
 		else:
-			select_btn.text = "CHỌN CHIẾN BINH"
+			select_btn.text = I18nClass.loc("op_confirm")
 			select_btn.pressed.connect(func():
 				if sound_mgr and sound_mgr.has_method("play_ui_click"):
 					sound_mgr.play_ui_click()
@@ -618,7 +686,7 @@ func _setup_operatives_modal() -> void:
 func _setup_armory_modal() -> void:
 	var balance_lbl = $ArmoryModal/Margin/VBox/NaniteBalanceLabel as Label
 	if balance_lbl:
-		balance_lbl.text = "💎 NANITE CORES KHẢ DỤNG: %d" % SaveManagerClass.nanites
+		balance_lbl.text = "💎 NANITE CORES: %d" % SaveManagerClass.nanites
 
 	var grid = $ArmoryModal/Margin/VBox/Scroll/Grid
 	for c in grid.get_children():
@@ -690,7 +758,7 @@ func _setup_armory_modal() -> void:
 		buy_btn.custom_minimum_size = Vector2(130, 38)
 		buy_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		if is_max:
-			buy_btn.text = "MAX CẤP 👑"
+			buy_btn.text = "%s 👑" % I18nClass.loc("armory_max")
 			buy_btn.disabled = true
 		else:
 			buy_btn.text = "%d 💎" % cost
@@ -705,3 +773,59 @@ func _setup_armory_modal() -> void:
 		hbox.add_child(buy_btn)
 
 		grid.add_child(card)
+
+func _refresh_all_ui_text() -> void:
+	if subtitle_label:
+		subtitle_label.text = I18nClass.loc("menu_subtitle")
+	var footer = $Margin/Content/LeftCol/FooterLabel as Label
+	if footer:
+		footer.text = I18nClass.loc("menu_footer")
+
+	for b in btn_labels.keys():
+		var data = btn_labels[b]
+		data.title_lbl.text = I18nClass.loc(data.title_key)
+		data.desc_lbl.text = I18nClass.loc(data.desc_key)
+
+	var stats_header = $Margin/Content/RightCol/StatsPanel/Margin/StatsVBox/StatsHeader as Label
+	if stats_header:
+		stats_header.text = I18nClass.loc("stats_header")
+	_update_stats_display()
+
+	var st_title = $SettingsModal/VBox/Title as Label
+	if st_title: st_title.text = I18nClass.loc("settings_title")
+	var v_lbl = $SettingsModal/VBox/VolumeRow/Label as Label
+	if v_lbl: v_lbl.text = I18nClass.loc("settings_volume")
+	var sh_lbl = $SettingsModal/VBox/ShakeRow/Label as Label
+	if sh_lbl: sh_lbl.text = I18nClass.loc("settings_shake")
+	var dn_lbl = $SettingsModal/VBox/DmgNumRow/Label as Label
+	if dn_lbl: dn_lbl.text = I18nClass.loc("settings_dmg_num")
+	_update_dmg_num_btn_visual()
+	if lang_label: lang_label.text = I18nClass.loc("settings_lang")
+	if lang_btn: lang_btn.text = I18nClass.loc("settings_lang_btn")
+	if btn_settings_back: btn_settings_back.text = I18nClass.loc("settings_back")
+
+	var htp_title = $HowToPlayModal/VBox/Title as Label
+	if htp_title: htp_title.text = I18nClass.loc("how_title")
+	var htp_back = $HowToPlayModal/VBox/BtnHowToPlayBack as Button
+	if htp_back: htp_back.text = I18nClass.loc("how_back")
+	_setup_how_to_play_cards()
+
+	var cr_title = $CreditsModal/VBox/Title as Label
+	if cr_title: cr_title.text = I18nClass.loc("credits_title")
+	var cr_back = $CreditsModal/VBox/BtnCreditsBack as Button
+	if cr_back: cr_back.text = I18nClass.loc("credits_back")
+
+	var op_title = $OperativesModal/Margin/VBox/Title as Label
+	if op_title: op_title.text = I18nClass.loc("op_modal_title")
+	var op_back = $OperativesModal/Margin/VBox/BtnOperativesBack as Button
+	if op_back: op_back.text = I18nClass.loc("op_back")
+	_setup_operatives_modal()
+
+	var ar_title = $ArmoryModal/Margin/VBox/Title as Label
+	if ar_title: ar_title.text = I18nClass.loc("armory_title")
+	var ar_refund = $ArmoryModal/Margin/VBox/BottomRow/BtnRefund as Button
+	if ar_refund: ar_refund.text = I18nClass.loc("armory_refund")
+	var ar_back = $ArmoryModal/Margin/VBox/BottomRow/BtnArmoryBack as Button
+	if ar_back: ar_back.text = I18nClass.loc("armory_back")
+	_setup_armory_modal()
+

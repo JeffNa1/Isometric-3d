@@ -2,6 +2,7 @@ extends CanvasLayer
 
 const SpriteFactory = preload("res://scripts/sprite_factory.gd")
 const SaveManagerClass = preload("res://scripts/save_manager.gd")
+const I18nClass = preload("res://scripts/i18n.gd")
 
 signal upgrade_selected(upgrade_id: String)
 
@@ -11,6 +12,7 @@ var banished_upgrades: Array[String] = []
 var current_level_picks: Array[Dictionary] = []
 var tactical_row: HBoxContainer = null
 var debrief_damage_box: VBoxContainer = null
+var pause_lang_btn: Button = null
 
 @onready var xp_bar: ProgressBar = $TopBar/XPBar
 @onready var level_label: Label = $TopBar/LevelLabel
@@ -18,6 +20,7 @@ var debrief_damage_box: VBoxContainer = null
 @onready var kill_label: Label = $TopBar/KillLabel
 @onready var fps_label: Label = $TopBar/FPSLabel
 @onready var swarm_label: Label = $TopBar/SwarmLabel
+@onready var btn_sandbox: Button = $TopBar.get_node_or_null("BtnSandbox")
 
 @onready var health_chassis: PanelContainer = $BottomBar/HealthChassis
 @onready var reactor_pod: PanelContainer = $BottomBar/HealthChassis/ChassisLayout/ReactorPod
@@ -122,6 +125,24 @@ func _ready() -> void:
 	if pause_resume_btn: pause_resume_btn.pressed.connect(_on_resume_pressed)
 	if pause_restart_btn: pause_restart_btn.pressed.connect(_on_restart_pressed)
 	if pause_menu_btn: pause_menu_btn.pressed.connect(_on_menu_pressed)
+
+	if btn_sandbox:
+		btn_sandbox.pressed.connect(func():
+			var sb = get_tree().current_scene.get_node_or_null("SandboxMenu")
+			if sb and sb.has_method("toggle_menu"):
+				sb.toggle_menu()
+		)
+
+	if pause_modal and not pause_lang_btn:
+		pause_lang_btn = Button.new()
+		pause_lang_btn.custom_minimum_size = Vector2(200, 40)
+		pause_lang_btn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		pause_lang_btn.pressed.connect(_on_pause_lang_toggled)
+		var p_vbox = $PauseModal/VBox
+		p_vbox.add_child(pause_lang_btn)
+		p_vbox.move_child(pause_lang_btn, pause_menu_btn.get_index())
+
+	_refresh_pause_modal_text()
 
 	if chest_claim_btn:
 		chest_claim_btn.pressed.connect(_on_chest_claim_pressed)
@@ -255,19 +276,19 @@ func _create_combo_elements() -> void:
 	combo_badge.hide()
 	add_child(combo_badge)
 
-	# 2. Huge Multikill Announcement Banner
+	# 2. Multikill Announcement Banner (Clean Top Placement)
 	milestone_banner = Label.new()
 	milestone_banner.name = "MilestoneBanner"
 	milestone_banner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	milestone_banner.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	milestone_banner.anchor_left = 0.0
 	milestone_banner.anchor_right = 1.0
-	milestone_banner.offset_top = 135.0
-	milestone_banner.offset_bottom = 185.0
-	milestone_banner.add_theme_font_size_override("font_size", 30)
+	milestone_banner.offset_top = 80.0
+	milestone_banner.offset_bottom = 120.0
+	milestone_banner.add_theme_font_size_override("font_size", 22)
 	milestone_banner.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.95))
-	milestone_banner.add_theme_constant_override("shadow_offset_x", 3)
-	milestone_banner.add_theme_constant_override("shadow_offset_y", 3)
+	milestone_banner.add_theme_constant_override("shadow_offset_x", 2)
+	milestone_banner.add_theme_constant_override("shadow_offset_y", 2)
 	milestone_banner.hide()
 	add_child(milestone_banner)
 
@@ -275,35 +296,32 @@ func update_combo(count: int) -> void:
 	if not combo_badge:
 		_create_combo_elements()
 
-	if count < 2:
+	if count < 5:
 		combo_badge.hide()
 		return
 
 	combo_badge.show()
-	combo_scale = 1.38
+	if count % 25 == 0:
+		combo_scale = 1.20
+	else:
+		combo_scale = 1.06
 
-	var col = Color(0.4, 0.8, 1.0, 1.0)
+	var col = Color(0.4, 0.85, 1.0, 1.0)
 	var prefix = "⚡"
-	if count >= 250:
-		col = Color(1.0, 0.2, 0.6, 1.0)
-		prefix = "👑"
-	elif count >= 100:
-		col = Color(1.0, 0.25, 0.2, 1.0)
-		prefix = "☣️"
-	elif count >= 75:
-		col = Color(1.0, 0.5, 0.1, 1.0)
-		prefix = "👑"
-	elif count >= 50:
+	if count >= 1000:
 		col = Color(1.0, 0.85, 0.2, 1.0)
+		prefix = "👑"
+	elif count >= 500:
+		col = Color(1.0, 0.2, 0.6, 1.0)
 		prefix = "💀"
-	elif count >= 25:
-		col = Color(0.2, 1.0, 0.5, 1.0)
+	elif count >= 250:
+		col = Color(1.0, 0.4, 0.15, 1.0)
 		prefix = "💥"
-	elif count >= 10:
-		col = Color(0.3, 0.9, 1.0, 1.0)
+	elif count >= 100:
+		col = Color(0.25, 0.9, 1.0, 1.0)
 		prefix = "🔥"
-	elif count >= 5:
-		col = Color(0.4, 0.8, 1.0, 1.0)
+	elif count >= 50:
+		col = Color(0.3, 1.0, 0.6, 1.0)
 		prefix = "⚡"
 
 	combo_label.text = "%s x%d COMBO!" % [prefix, count]
@@ -315,10 +333,11 @@ func show_combo_milestone(text: String, col: Color) -> void:
 
 	milestone_banner.text = text
 	milestone_banner.add_theme_color_override("font_color", col)
+	milestone_banner.modulate = Color(1.0, 1.0, 1.0, 1.0)
 	milestone_banner.show()
-	milestone_timer = 2.4
-	if sound_mgr and sound_mgr.has_method("play_chest"):
-		sound_mgr.play_chest()
+	milestone_timer = 1.2
+	if sound_mgr and sound_mgr.has_method("play_ui_click"):
+		sound_mgr.play_ui_click()
 
 func show_surge_warning(text: String) -> void:
 	if not surge_banner:
@@ -329,14 +348,14 @@ func show_surge_warning(text: String) -> void:
 
 func _process(delta: float) -> void:
 	if combo_scale > 1.0:
-		combo_scale = move_toward(combo_scale, 1.0, 3.5 * delta)
+		combo_scale = move_toward(combo_scale, 1.0, 3.0 * delta)
 		if combo_badge:
 			combo_badge.scale = Vector2(combo_scale, combo_scale)
 
 	if milestone_timer > 0.0:
 		milestone_timer -= delta
-		var pulse = (int(float(Time.get_ticks_msec()) / 90.0) % 2) * 0.3 + 0.7
-		milestone_banner.modulate = Color(1.0, 1.0, 1.0, pulse)
+		var alpha = clamp(milestone_timer / 0.35, 0.0, 1.0)
+		milestone_banner.modulate = Color(1.0, 1.0, 1.0, alpha)
 		if milestone_timer <= 0.0:
 			milestone_banner.hide()
 
@@ -550,13 +569,13 @@ func set_kills(count: int) -> void:
 func set_swarm_count(count: int) -> void:
 	swarm_count = count
 	if count < 200:
-		swarm_label.text = "BẦY QUÁI: %d [ỔN ĐỊNH]" % count
+		swarm_label.text = I18nClass.loc("hud_swarm_stable") % count
 		swarm_label.add_theme_color_override("font_color", Color(0.3, 1.0, 0.5, 1.0))
 	elif count < 600:
-		swarm_label.text = "BẦY QUÁI: %d [CẢNH BÁO]" % count
+		swarm_label.text = I18nClass.loc("hud_swarm_warning") % count
 		swarm_label.add_theme_color_override("font_color", Color(1.0, 0.8, 0.2, 1.0))
 	else:
-		swarm_label.text = "BẦY QUÁI: %d [NGUY CẤP!]" % count
+		swarm_label.text = I18nClass.loc("hud_swarm_critical") % count
 		swarm_label.add_theme_color_override("font_color", Color(1.0, 0.25, 0.25, 1.0))
 
 func update_inventory() -> void:
@@ -670,7 +689,7 @@ func _setup_tactical_row(lvl: int, is_banish_mode: bool) -> void:
 	# 1. Reroll Button
 	var btn_reroll = Button.new()
 	btn_reroll.custom_minimum_size = Vector2(210, 42)
-	btn_reroll.text = "🎲 ĐỔI THẺ (Còn %d)" % rerolls_left
+	btn_reroll.text = I18nClass.loc("hud_tactical_reroll") % rerolls_left
 	btn_reroll.disabled = (rerolls_left <= 0 or is_banish_mode)
 	_style_industrial_btn(btn_reroll, Color(0.2, 0.85, 1.0), Color(0.04, 0.08, 0.16))
 	btn_reroll.pressed.connect(func():
@@ -685,7 +704,7 @@ func _setup_tactical_row(lvl: int, is_banish_mode: bool) -> void:
 	# 2. Banish Button
 	var btn_banish = Button.new()
 	btn_banish.custom_minimum_size = Vector2(210, 42)
-	btn_banish.text = "◀ QUAY LẠI CHỌN" if is_banish_mode else ("🚫 TẨY TRỪ (Còn %d)" % banishes_left)
+	btn_banish.text = I18nClass.loc("hud_tactical_back") if is_banish_mode else (I18nClass.loc("hud_tactical_banish") % banishes_left)
 	btn_banish.disabled = (banishes_left <= 0 and not is_banish_mode)
 	var banish_col = Color(1.0, 0.6, 0.2) if is_banish_mode else Color(1.0, 0.3, 0.35)
 	_style_industrial_btn(btn_banish, banish_col, Color(0.14, 0.04, 0.06))
@@ -699,7 +718,7 @@ func _setup_tactical_row(lvl: int, is_banish_mode: bool) -> void:
 	# 3. Skip Button
 	var btn_skip = Button.new()
 	btn_skip.custom_minimum_size = Vector2(210, 42)
-	btn_skip.text = "⏩ BỎ QUA (+50 NANITES)"
+	btn_skip.text = I18nClass.loc("hud_tactical_skip")
 	_style_industrial_btn(btn_skip, Color(1.0, 0.85, 0.25), Color(0.14, 0.10, 0.03))
 	btn_skip.pressed.connect(func():
 		if sound_mgr and sound_mgr.has_method("play_ui_click"):
@@ -723,30 +742,30 @@ func _create_hologram_card(item: Dictionary, is_banish_mode: bool = false, curre
 	active_card_targets[card] = Vector2.ONE
 
 	var glow_col = Color(0.25, 0.85, 1.0, 1.0)
-	var cat_name = "[ VŨ KHÍ MỚI ]"
+	var cat_name = I18nClass.loc("hud_card_new_tag")
 	var bg_col = Color(0.04, 0.08, 0.16, 0.96)
 
 	if is_banish_mode:
 		bg_col = Color(0.18, 0.03, 0.05, 0.97)
 		glow_col = Color(1.0, 0.25, 0.3, 1.0)
-		cat_name = "🚫 CHỌN ĐỂ LOẠI BỎ KHỎI RUN"
+		cat_name = I18nClass.loc("hud_card_banish_mode")
 	else:
 		match item.rarity:
 			"evo":
 				bg_col = Color(0.16, 0.05, 0.14, 0.97)
 				glow_col = Color(1.0, 0.28, 0.65, 1.0)
-				cat_name = "👑 TIẾN HÓA TỐI THƯỢNG"
+				cat_name = I18nClass.loc("hud_card_evo_tag")
 			"passive":
 				bg_col = Color(0.03, 0.12, 0.07, 0.96)
 				glow_col = Color(0.25, 1.0, 0.55, 1.0)
-				cat_name = "💠 NỘI TẠI CÔNG NGHỆ"
+				cat_name = I18nClass.loc("hud_card_passive_tag")
 			_:
 				bg_col = Color(0.04, 0.09, 0.18, 0.96)
 				glow_col = Color(0.25, 0.85, 1.0, 1.0)
 				if item.get("is_new", false):
-					cat_name = "✨ VŨ KHÍ MỚI"
+					cat_name = I18nClass.loc("hud_card_new_tag")
 				else:
-					cat_name = "⚡ CƯỜNG HÓA VŨ KHÍ"
+					cat_name = I18nClass.loc("hud_card_upgrade_tag")
 
 	var card_tex_normal = SpriteFactory.create_industrial_crt_frame(glow_col, bg_col)
 	var card_tex_hover = SpriteFactory.create_industrial_crt_frame(Color(1.0, 1.0, 1.0, 1.0), bg_col.lightened(0.06))
@@ -812,7 +831,7 @@ func _create_hologram_card(item: Dictionary, is_banish_mode: bool = false, curre
 
 	if item.rarity == "evo":
 		var evo_meter = Label.new()
-		evo_meter.text = "👑 TIẾN HÓA TỐI THƯỢNG - MAX LEVEL"
+		evo_meter.text = I18nClass.loc("hud_meter_evo")
 		evo_meter.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		evo_meter.add_theme_font_size_override("font_size", 11)
 		evo_meter.add_theme_color_override("font_color", Color(1.0, 0.85, 0.25, 1.0))
@@ -863,10 +882,10 @@ func _create_hologram_card(item: Dictionary, is_banish_mode: bool = false, curre
 	btn_action.custom_minimum_size = Vector2(250, 42)
 	btn_action.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	if is_banish_mode:
-		btn_action.text = "🚫 XÓA VĨNH VIỄN KHỎI RUN"
+		btn_action.text = I18nClass.loc("hud_card_btn_banish")
 		_style_industrial_btn(btn_action, Color(1.0, 0.3, 0.3), Color(0.18, 0.04, 0.04, 0.98))
 	else:
-		btn_action.text = "👑 TIẾN HÓA NGAY ▶" if item.rarity == "evo" else "⚡ BÚ NÂNG CẤP NÀY ▶"
+		btn_action.text = I18nClass.loc("hud_card_btn_evo") if item.rarity == "evo" else I18nClass.loc("hud_card_btn_upgrade")
 		_style_industrial_btn(btn_action, glow_col, Color(0.06, 0.12, 0.22, 0.95))
 	btn_action.add_theme_font_size_override("font_size", 13)
 	btn_action.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
@@ -929,153 +948,153 @@ func _build_available_upgrades() -> Array[Dictionary]:
 	# 1. Super Evolutions Check
 	if w_lv["railgun"] >= 5 and p_lv["energy_core"] >= 1 and not evo["railgun"]:
 		list.append({
-			"id": "railgun_evo", "rarity": "evo", "stars": "👑 TIẾN HÓA TỐI THƯỢNG",
-			"title": "⚡ HYPERION TACHYON",
-			"desc": "Bắn chùm laser kép hủy diệt liên tục xé toạc toàn bộ chiến trường!",
-			"lvl": 5, "stat_bonus": "MAX TIẾN HÓA • LASER KÉP", "is_new": false
+			"id": "railgun_evo", "rarity": "evo", "stars": I18nClass.loc("hud_card_evo_tag"),
+			"title": I18nClass.loc("evo_railgun_title"),
+			"desc": I18nClass.loc("evo_railgun_desc"),
+			"lvl": 5, "stat_bonus": I18nClass.loc("evo_railgun_bonus"), "is_new": false
 		})
 	if w_lv["flame"] >= 5 and p_lv["thrusters"] >= 1 and not evo["flame"]:
 		list.append({
-			"id": "flame_evo", "rarity": "evo", "stars": "👑 TIẾN HÓA TỐI THƯỢNG",
-			"title": "🔥 INFERNAL SUNSTORM",
-			"desc": "Phun bão lửa plasma xoay tròn 360° thiêu rụi mọi quái vật áp sát!",
-			"lvl": 5, "stat_bonus": "MAX TIẾN HÓA • BÃO LỬA 360°", "is_new": false
+			"id": "flame_evo", "rarity": "evo", "stars": I18nClass.loc("hud_card_evo_tag"),
+			"title": I18nClass.loc("evo_flame_title"),
+			"desc": I18nClass.loc("evo_flame_desc"),
+			"lvl": 5, "stat_bonus": I18nClass.loc("evo_flame_bonus"), "is_new": false
 		})
 	if w_lv["shockwave"] >= 5 and p_lv["amp"] >= 1 and not evo["shockwave"]:
 		list.append({
-			"id": "shockwave_evo", "rarity": "evo", "stars": "👑 TIẾN HÓA TỐI THƯỢNG",
-			"title": "💥 SUPERNOVA ZERO",
-			"desc": "Sóng nổ kép hố đen nén quái lại rồi kích nổ kinh thiên động địa!",
-			"lvl": 5, "stat_bonus": "MAX TIẾN HÓA • HỐ ĐEN KÉP", "is_new": false
+			"id": "shockwave_evo", "rarity": "evo", "stars": I18nClass.loc("hud_card_evo_tag"),
+			"title": I18nClass.loc("evo_shockwave_title"),
+			"desc": I18nClass.loc("evo_shockwave_desc"),
+			"lvl": 5, "stat_bonus": I18nClass.loc("evo_shockwave_bonus"), "is_new": false
 		})
 	if w_lv["missile"] >= 5 and p_lv["magnet"] >= 1 and not evo["missile"]:
 		list.append({
-			"id": "missile_evo", "rarity": "evo", "stars": "👑 TIẾN HÓA TỐI THƯỢNG",
-			"title": "🚀 APOCALYPSE BARRAGE",
-			"desc": "Phóng loạt 6 tên lửa đạn chùm tầm nhiệt nổ liên hoàn khắp màn hình!",
-			"lvl": 5, "stat_bonus": "MAX TIẾN HÓA • 6 TÊN LỬA TẦM NHIỆT", "is_new": false
+			"id": "missile_evo", "rarity": "evo", "stars": I18nClass.loc("hud_card_evo_tag"),
+			"title": I18nClass.loc("evo_missile_title"),
+			"desc": I18nClass.loc("evo_missile_desc"),
+			"lvl": 5, "stat_bonus": I18nClass.loc("evo_missile_bonus"), "is_new": false
 		})
 	if w_lv["blade"] >= 5 and p_lv["nano_armor"] >= 1 and not evo["blade"]:
 		list.append({
-			"id": "blade_evo", "rarity": "evo", "stars": "👑 TIẾN HÓA TỐI THƯỢNG",
-			"title": "🌀 OMNI-SCYTHE VORTEX",
-			"desc": "6 lưỡi hái năng lượng khổng lồ bọc kín không gian xung quanh!",
-			"lvl": 5, "stat_bonus": "MAX TIẾN HÓA • 6 LƯỠI HÁI OMNI", "is_new": false
+			"id": "blade_evo", "rarity": "evo", "stars": I18nClass.loc("hud_card_evo_tag"),
+			"title": I18nClass.loc("evo_blade_title"),
+			"desc": I18nClass.loc("evo_blade_desc"),
+			"lvl": 5, "stat_bonus": I18nClass.loc("evo_blade_bonus"), "is_new": false
 		})
 	if w_lv.has("tesla") and w_lv["tesla"] >= 5 and p_lv["energy_core"] >= 1 and not evo["tesla"]:
 		list.append({
-			"id": "tesla_evo", "rarity": "evo", "stars": "👑 TIẾN HÓA TỐI THƯỢNG",
-			"title": "⚡ MJOLNIR STORMCORE",
-			"desc": "Bão sấm sét cuồng nộ giáng liên hoàn khắp bản đồ xé nát quân thù!",
-			"lvl": 5, "stat_bonus": "MAX TIẾN HÓA • SẤM SÉT TOÀN BẢN ĐỒ", "is_new": false
+			"id": "tesla_evo", "rarity": "evo", "stars": I18nClass.loc("hud_card_evo_tag"),
+			"title": I18nClass.loc("evo_tesla_title"),
+			"desc": I18nClass.loc("evo_tesla_desc"),
+			"lvl": 5, "stat_bonus": I18nClass.loc("evo_tesla_bonus"), "is_new": false
 		})
 	if w_lv.has("mortar") and w_lv["mortar"] >= 5 and p_lv["amp"] >= 1 and not evo["mortar"]:
 		list.append({
-			"id": "mortar_evo", "rarity": "evo", "stars": "👑 TIẾN HÓA TỐI THƯỢNG",
-			"title": "☣️ CORROSIVE CHERNOBYL",
-			"desc": "Bắn 3 pháo cối phóng xạ tạo biển axít hủy diệt làm tan chảy mọi quái vật!",
-			"lvl": 5, "stat_bonus": "MAX TIẾN HÓA • 3 PHÁO CỐI BIỂN AXÍT", "is_new": false
+			"id": "mortar_evo", "rarity": "evo", "stars": I18nClass.loc("hud_card_evo_tag"),
+			"title": I18nClass.loc("evo_mortar_title"),
+			"desc": I18nClass.loc("evo_mortar_desc"),
+			"lvl": 5, "stat_bonus": I18nClass.loc("evo_mortar_bonus"), "is_new": false
 		})
 
 	# 2. Weapons Unlocks & Upgrades
 	if w_lv["railgun"] == 0:
 		list.append({
-			"id": "railgun", "rarity": "weapon", "stars": "✨ VŨ KHÍ MỚI",
-			"title": "⚡ SÚNG LASER RAILGUN", "desc": "Mở khóa chùm laser cao tần xuyên thủng hàng loạt quái vật theo đường thẳng.",
-			"lvl": 0, "stat_bonus": "MỞ KHÓA VŨ KHÍ MỚI", "is_new": true
+			"id": "railgun", "rarity": "weapon", "stars": I18nClass.loc("hud_card_new_tag"),
+			"title": I18nClass.loc("wpn_railgun_title_new"), "desc": I18nClass.loc("wpn_railgun_desc_new"),
+			"lvl": 0, "stat_bonus": I18nClass.loc("wpn_railgun_bonus_new"), "is_new": true
 		})
 	elif w_lv["railgun"] < 5 and not evo["railgun"]:
 		var r_lvl = w_lv["railgun"]
 		list.append({
 			"id": "railgun", "rarity": "weapon", "stars": _get_stars(r_lvl),
-			"title": "⚡ CƯỜNG HÓA RAILGUN", "desc": "Tăng độ rộng chùm laser, độ dài và sát thương xuyên thấu.",
-			"lvl": r_lvl, "stat_bonus": "+30% SÁT THƯƠNG & TIA RỘNG", "is_new": false
+			"title": I18nClass.loc("wpn_railgun_title_up"), "desc": I18nClass.loc("wpn_railgun_desc_up"),
+			"lvl": r_lvl, "stat_bonus": I18nClass.loc("wpn_railgun_bonus_up"), "is_new": false
 		})
 
 	if w_lv["flame"] == 0:
 		list.append({
-			"id": "flame", "rarity": "weapon", "stars": "✨ VŨ KHÍ MỚI",
-			"title": "🔥 SÚNG PHUN LỬA", "desc": "Mở khóa luồng lửa plasma thiêu đốt quái vật phía trước mặt.",
-			"lvl": 0, "stat_bonus": "MỞ KHÓA VŨ KHÍ MỚI", "is_new": true
+			"id": "flame", "rarity": "weapon", "stars": I18nClass.loc("hud_card_new_tag"),
+			"title": I18nClass.loc("wpn_flame_title_new"), "desc": I18nClass.loc("wpn_flame_desc_new"),
+			"lvl": 0, "stat_bonus": I18nClass.loc("wpn_flame_bonus_new"), "is_new": true
 		})
 	elif w_lv["flame"] < 5 and not evo["flame"]:
 		var f_lvl = w_lv["flame"]
 		list.append({
 			"id": "flame", "rarity": "weapon", "stars": _get_stars(f_lvl),
-			"title": "🔥 NÂNG CẤP LỬA PLASMA", "desc": "Mở rộng góc phun, tăng tầm xa và sát thương thiêu đốt.",
-			"lvl": f_lvl, "stat_bonus": "+25% GÓC & TẦM PHUN", "is_new": false
+			"title": I18nClass.loc("wpn_flame_title_up"), "desc": I18nClass.loc("wpn_flame_desc_up"),
+			"lvl": f_lvl, "stat_bonus": I18nClass.loc("wpn_flame_bonus_up"), "is_new": false
 		})
 
 	if w_lv["shockwave"] == 0:
 		list.append({
-			"id": "shockwave", "rarity": "weapon", "stars": "✨ VŨ KHÍ MỚI",
-			"title": "💥 SÓNG CHẤN ĐỘNG NOVA", "desc": "Mở khóa vòng sóng xung kích hất tung toàn bộ quái vật áp sát.",
-			"lvl": 0, "stat_bonus": "MỞ KHÓA VŨ KHÍ MỚI", "is_new": true
+			"id": "shockwave", "rarity": "weapon", "stars": I18nClass.loc("hud_card_new_tag"),
+			"title": I18nClass.loc("wpn_shockwave_title_new"), "desc": I18nClass.loc("wpn_shockwave_desc_new"),
+			"lvl": 0, "stat_bonus": I18nClass.loc("wpn_shockwave_bonus_new"), "is_new": true
 		})
 	elif w_lv["shockwave"] < 5 and not evo["shockwave"]:
 		var s_lvl = w_lv["shockwave"]
 		list.append({
 			"id": "shockwave", "rarity": "weapon", "stars": _get_stars(s_lvl),
-			"title": "💥 NÂNG CẤP SHOCKWAVE", "desc": "Tăng bán kính nổ, lực đẩy lùi và giảm thời gian nạp chiêu.",
-			"lvl": s_lvl, "stat_bonus": "+35% BÁN KÍNH SÓNG NỔ", "is_new": false
+			"title": I18nClass.loc("wpn_shockwave_title_up"), "desc": I18nClass.loc("wpn_shockwave_desc_up"),
+			"lvl": s_lvl, "stat_bonus": I18nClass.loc("wpn_shockwave_bonus_up"), "is_new": false
 		})
 
 	if w_lv["missile"] == 0:
 		list.append({
-			"id": "missile", "rarity": "weapon", "stars": "✨ VŨ KHÍ MỚI",
-			"title": "🚀 TÊN LỬA TỰ DẪN", "desc": "Mở khóa bệ phóng tên lửa tầm nhiệt bắn đạn chùm nổ diện rộng.",
-			"lvl": 0, "stat_bonus": "MỞ KHÓA VŨ KHÍ MỚI", "is_new": true
+			"id": "missile", "rarity": "weapon", "stars": I18nClass.loc("hud_card_new_tag"),
+			"title": I18nClass.loc("wpn_missile_title_new"), "desc": I18nClass.loc("wpn_missile_desc_new"),
+			"lvl": 0, "stat_bonus": I18nClass.loc("wpn_missile_bonus_new"), "is_new": true
 		})
 	elif w_lv["missile"] < 5 and not evo["missile"]:
 		var m_lvl = w_lv["missile"]
 		list.append({
 			"id": "missile", "rarity": "weapon", "stars": _get_stars(m_lvl),
-			"title": "🚀 NÂNG CẤP TÊN LỬA", "desc": "Bắn thêm tên lửa mỗi loạt, tăng bán kính nổ và giảm hồi chiêu.",
-			"lvl": m_lvl, "stat_bonus": "+2 TÊN LỬA TẦM NHIỆT / LOẠT", "is_new": false
+			"title": I18nClass.loc("wpn_missile_title_up"), "desc": I18nClass.loc("wpn_missile_desc_up"),
+			"lvl": m_lvl, "stat_bonus": I18nClass.loc("wpn_missile_bonus_up"), "is_new": false
 		})
 
 	if w_lv["blade"] == 0:
 		list.append({
-			"id": "blade", "rarity": "weapon", "stars": "✨ VŨ KHÍ MỚI",
-			"title": "🌀 LƯỠI HÁI QUỸ ĐẠO", "desc": "Mở khóa lưỡi dao năng lượng xoay quanh người bảo vệ cận chiến.",
-			"lvl": 0, "stat_bonus": "MỞ KHÓA VŨ KHÍ MỚI", "is_new": true
+			"id": "blade", "rarity": "weapon", "stars": I18nClass.loc("hud_card_new_tag"),
+			"title": I18nClass.loc("wpn_blade_title_new"), "desc": I18nClass.loc("wpn_blade_desc_new"),
+			"lvl": 0, "stat_bonus": I18nClass.loc("wpn_blade_bonus_new"), "is_new": true
 		})
 	elif w_lv["blade"] < 5 and not evo["blade"]:
 		var b_lvl = w_lv["blade"]
 		list.append({
 			"id": "blade", "rarity": "weapon", "stars": _get_stars(b_lvl),
-			"title": "🌀 NÂNG CẤP LƯỠI HÁI", "desc": "Tăng số lượng lưỡi dao, tốc độ xoay và bán kính quỹ đạo.",
-			"lvl": b_lvl, "stat_bonus": "+1 LƯỠI HÁI QUỸ ĐẠO", "is_new": false
+			"title": I18nClass.loc("wpn_blade_title_up"), "desc": I18nClass.loc("wpn_blade_desc_up"),
+			"lvl": b_lvl, "stat_bonus": I18nClass.loc("wpn_blade_bonus_up"), "is_new": false
 		})
 
 	if w_lv.has("tesla"):
 		if w_lv["tesla"] == 0:
 			list.append({
-				"id": "tesla", "rarity": "weapon", "stars": "✨ VŨ KHÍ MỚI",
-				"title": "⚡ CUỘN DÂY TESLA", "desc": "Mở khóa phóng tia điện giật lan truyền qua nhiều kẻ địch liên tiếp.",
-				"lvl": 0, "stat_bonus": "MỞ KHÓA VŨ KHÍ MỚI", "is_new": true
+				"id": "tesla", "rarity": "weapon", "stars": I18nClass.loc("hud_card_new_tag"),
+				"title": I18nClass.loc("wpn_tesla_title_new"), "desc": I18nClass.loc("wpn_tesla_desc_new"),
+				"lvl": 0, "stat_bonus": I18nClass.loc("wpn_tesla_bonus_new"), "is_new": true
 			})
 		elif w_lv["tesla"] < 5 and not evo["tesla"]:
 			var t_lvl = w_lv["tesla"]
 			list.append({
 				"id": "tesla", "rarity": "weapon", "stars": _get_stars(t_lvl),
-				"title": "⚡ NÂNG CẤP TESLA", "desc": "Tăng số lần giật lan, sát thương điện và giảm thời gian nạp.",
-				"lvl": t_lvl, "stat_bonus": "+2 TIA SÉT LAN TRUYỀN", "is_new": false
+				"title": I18nClass.loc("wpn_tesla_title_up"), "desc": I18nClass.loc("wpn_tesla_desc_up"),
+				"lvl": t_lvl, "stat_bonus": I18nClass.loc("wpn_tesla_bonus_up"), "is_new": false
 			})
 
 	if w_lv.has("mortar"):
 		if w_lv["mortar"] == 0:
 			list.append({
-				"id": "mortar", "rarity": "weapon", "stars": "✨ VŨ KHÍ MỚI",
-				"title": "☣️ PHÁO CỐI AXÍT", "desc": "Mở khóa bắn đạn axít vòng cung tạo vũng độc ăn mòn diện rộng.",
-				"lvl": 0, "stat_bonus": "MỞ KHÓA VŨ KHÍ MỚI", "is_new": true
+				"id": "mortar", "rarity": "weapon", "stars": I18nClass.loc("hud_card_new_tag"),
+				"title": I18nClass.loc("wpn_mortar_title_new"), "desc": I18nClass.loc("wpn_mortar_desc_new"),
+				"lvl": 0, "stat_bonus": I18nClass.loc("wpn_mortar_bonus_new"), "is_new": true
 			})
 		elif w_lv["mortar"] < 5 and not evo["mortar"]:
 			var mo_lvl = w_lv["mortar"]
 			list.append({
 				"id": "mortar", "rarity": "weapon", "stars": _get_stars(mo_lvl),
-				"title": "☣️ NÂNG CẤP PHÁO CỐI", "desc": "Bắn thêm đạn cối, tăng bán kính và sát thương vũng axít.",
-				"lvl": mo_lvl, "stat_bonus": "+1 ĐẠN PHÁO CỐI AXÍT", "is_new": false
+				"title": I18nClass.loc("wpn_mortar_title_up"), "desc": I18nClass.loc("wpn_mortar_desc_up"),
+				"lvl": mo_lvl, "stat_bonus": I18nClass.loc("wpn_mortar_bonus_up"), "is_new": false
 			})
 
 	# 3. Passive Items
@@ -1083,36 +1102,36 @@ func _build_available_upgrades() -> Array[Dictionary]:
 		var ec_lvl = p_lv["energy_core"]
 		list.append({
 			"id": "energy_core", "rarity": "passive", "stars": _get_stars(ec_lvl),
-			"title": "⚡ PIN NĂNG LƯỢNG", "desc": "Giảm 12% thời gian hồi chiêu mọi vũ khí (Tiến hóa Railgun & Tesla).",
-			"lvl": ec_lvl, "stat_bonus": "-12% HỒI CHIÊU TOÀN DIỆN", "is_new": ec_lvl == 0
+			"title": I18nClass.loc("pas_energy_core_title"), "desc": I18nClass.loc("pas_energy_core_desc"),
+			"lvl": ec_lvl, "stat_bonus": I18nClass.loc("pas_energy_core_bonus"), "is_new": ec_lvl == 0
 		})
 	if p_lv["nano_armor"] < 5:
 		var na_lvl = p_lv["nano_armor"]
 		list.append({
 			"id": "nano_armor", "rarity": "passive", "stars": _get_stars(na_lvl),
-			"title": "🩸 GIÁP HỢP KIM", "desc": "+30 Máu tối đa và hồi phục 1.5 HP/giây (Tiến hóa Lưỡi Hái).",
-			"lvl": na_lvl, "stat_bonus": "+30 HP & +1.5 HP/GIÂY", "is_new": na_lvl == 0
+			"title": I18nClass.loc("pas_nano_armor_title"), "desc": I18nClass.loc("pas_nano_armor_desc"),
+			"lvl": na_lvl, "stat_bonus": I18nClass.loc("pas_nano_armor_bonus"), "is_new": na_lvl == 0
 		})
 	if p_lv["thrusters"] < 5:
 		var th_lvl = p_lv["thrusters"]
 		list.append({
 			"id": "thrusters", "rarity": "passive", "stars": _get_stars(th_lvl),
-			"title": "👟 BỘ ĐẨY PHẢN LỰC", "desc": "+35 Tốc độ di chuyển để luồn lách né quái (Tiến hóa Phun Lửa).",
-			"lvl": th_lvl, "stat_bonus": "+35 TỐC ĐỘ DI CHUYỂN", "is_new": th_lvl == 0
+			"title": I18nClass.loc("pas_thrusters_title"), "desc": I18nClass.loc("pas_thrusters_desc"),
+			"lvl": th_lvl, "stat_bonus": I18nClass.loc("pas_thrusters_bonus"), "is_new": th_lvl == 0
 		})
 	if p_lv["magnet"] < 5:
 		var mg_lvl = p_lv["magnet"]
 		list.append({
 			"id": "magnet", "rarity": "passive", "stars": _get_stars(mg_lvl),
-			"title": "🧲 BỘ HÚT TINH THỂ", "desc": "+65 Bán kính hút ngọc kinh nghiệm từ xa (Tiến hóa Tên Lửa).",
-			"lvl": mg_lvl, "stat_bonus": "+65 BÁN KÍNH HÚT TINH THỂ", "is_new": mg_lvl == 0
+			"title": I18nClass.loc("pas_magnet_title"), "desc": I18nClass.loc("pas_magnet_desc"),
+			"lvl": mg_lvl, "stat_bonus": I18nClass.loc("pas_magnet_bonus"), "is_new": mg_lvl == 0
 		})
 	if p_lv["amp"] < 5:
 		var ap_lvl = p_lv["amp"]
 		list.append({
 			"id": "amp", "rarity": "passive", "stars": _get_stars(ap_lvl),
-			"title": "💥 CHÍP KHUẾCH ĐẠI", "desc": "+20% Sát thương toàn bộ kho vũ khí (Tiến hóa Shockwave & Pháo Cối).",
-			"lvl": ap_lvl, "stat_bonus": "+20% TỔNG SÁT THƯƠNG", "is_new": ap_lvl == 0
+			"title": I18nClass.loc("pas_amp_title"), "desc": I18nClass.loc("pas_amp_desc"),
+			"lvl": ap_lvl, "stat_bonus": I18nClass.loc("pas_amp_bonus"), "is_new": ap_lvl == 0
 		})
 
 	var filtered: Array[Dictionary] = []
@@ -1125,7 +1144,7 @@ func _get_stars(lvl: int) -> String:
 	var s = ""
 	for i in range(5):
 		s += "★" if i < lvl else "☆"
-	return "CẤP %d/5  [%s]" % [lvl + 1, s]
+	return I18nClass.loc("hud_meter_lvl") % [lvl + 1, s]
 
 func _choose_upgrade(upgrade_id: String) -> void:
 	level_up_panel.hide()
@@ -1157,10 +1176,10 @@ func show_game_over(level: int, time_survived: float = 0.0, total_kills_count: i
 	var title_lbl = game_over_panel.get_node_or_null("VBox/Title") as Label
 	if title_lbl:
 		if is_win:
-			title_lbl.text = "🏆 CHIẾN THẮNG HUY HOÀNG - TÁC CHIẾN HOÀN TẤT! 🏆"
+			title_lbl.text = I18nClass.loc("game_over_win")
 			title_lbl.add_theme_color_override("font_color", Color(1.0, 0.85, 0.2, 1.0))
 		else:
-			title_lbl.text = "☠️ TỬ TRẬN TRONG DANH DỰ • KẾT THÚC CHIẾN DỊCH ☠️"
+			title_lbl.text = I18nClass.loc("game_over_loss")
 			title_lbl.add_theme_color_override("font_color", Color(1.0, 0.28, 0.35, 1.0))
 
 	var mins = int(survival_seconds / 60.0)
@@ -1168,10 +1187,13 @@ func show_game_over(level: int, time_survived: float = 0.0, total_kills_count: i
 	var op_info = SaveManagerClass.operative_defs.get(SaveManagerClass.selected_operative, {})
 	var op_name = op_info.get("name", "VEX")
 
-	var record_str = " 🔥 [KỶ LỤC MỚI!]" if is_new_record else ""
-	game_over_stats.text = "CHIẾN BINH: %s\n⏱️ THỜI GIAN SINH TỒN: %02d:%02d%s    |    ⭐ CẤP ĐỘ ĐẠT ĐƯỢC: LVL %d\n💀 TIÊU DIỆT BẦY QUÁI: %d CON    |    💎 NANITES THU ĐƯỢC: +%d (TỔNG: %d)" % [
+	var record_str = I18nClass.loc("game_over_new_record") if is_new_record else ""
+	game_over_stats.text = I18nClass.loc("game_over_stats") % [
 		op_name, mins, secs, record_str, level, kills, run_nanites, SaveManagerClass.nanites
 	]
+
+	if restart_button: restart_button.text = I18nClass.loc("game_over_restart")
+	if menu_button: menu_button.text = I18nClass.loc("game_over_menu")
 
 	# Build weapon damage breakdown
 	if not debrief_damage_box:
@@ -1187,7 +1209,7 @@ func show_game_over(level: int, time_survived: float = 0.0, total_kills_count: i
 		c.queue_free()
 
 	var dmg_header = Label.new()
-	dmg_header.text = "--- HIỆU SUẤT SÁT THƯƠNG KHO VŨ KHÍ ---"
+	dmg_header.text = I18nClass.loc("game_over_debrief_header")
 	dmg_header.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	dmg_header.add_theme_font_size_override("font_size", 13)
 	dmg_header.add_theme_color_override("font_color", Color(0.3, 0.85, 1.0, 1.0))
@@ -1200,13 +1222,13 @@ func show_game_over(level: int, time_survived: float = 0.0, total_kills_count: i
 			total_dmg += float(d)
 
 	var weapon_names = {
-		"railgun": "⚡ Railgun Laser",
-		"flame": "🔥 Súng Phun Lửa",
-		"shockwave": "💥 Sóng Chấn Động",
-		"missile": "🚀 Tên Lửa Tự Dẫn",
-		"blade": "🌀 Lưỡi Hái Quỹ Đạo",
-		"tesla": "⚡ Cuộn Dây Tesla",
-		"mortar": "☣️ Pháo Cối Axít"
+		"railgun": I18nClass.loc("wpn_railgun_title_new"),
+		"flame": I18nClass.loc("wpn_flame_title_new"),
+		"shockwave": I18nClass.loc("wpn_shockwave_title_new"),
+		"missile": I18nClass.loc("wpn_missile_title_new"),
+		"blade": I18nClass.loc("wpn_blade_title_new"),
+		"tesla": I18nClass.loc("wpn_tesla_title_new"),
+		"mortar": I18nClass.loc("wpn_mortar_title_new")
 	}
 
 	if total_dmg > 0:
@@ -1247,7 +1269,7 @@ func show_game_over(level: int, time_survived: float = 0.0, total_kills_count: i
 			debrief_damage_box.add_child(row)
 	else:
 		var no_dmg = Label.new()
-		no_dmg.text = "Chưa ghi nhận sát thương vũ khí."
+		no_dmg.text = I18nClass.loc("game_over_no_dmg")
 		no_dmg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		no_dmg.add_theme_font_size_override("font_size", 11)
 		debrief_damage_box.add_child(no_dmg)
@@ -1285,6 +1307,43 @@ func _on_restart_pressed() -> void:
 		sound_mgr.play_ui_click()
 	get_tree().paused = false
 	get_tree().reload_current_scene()
+
+func _on_pause_lang_toggled() -> void:
+	if sound_mgr and sound_mgr.has_method("play_ui_click"):
+		sound_mgr.play_ui_click()
+	var new_lang = "en" if I18nClass.get_language() == "vi" else "vi"
+	I18nClass.set_language(new_lang)
+	SaveManagerClass.language = new_lang
+	SaveManagerClass.refresh_definitions()
+	SaveManagerClass.save_game()
+	_refresh_pause_modal_text()
+	set_swarm_count(swarm_count)
+
+func _refresh_pause_modal_text() -> void:
+	if pause_modal:
+		var title_node = pause_modal.get_node_or_null("VBox/Title") as Label
+		if title_node:
+			title_node.text = I18nClass.loc("pause_title")
+	if pause_resume_btn:
+		pause_resume_btn.text = I18nClass.loc("pause_resume")
+	if pause_restart_btn:
+		pause_restart_btn.text = I18nClass.loc("pause_restart")
+	if pause_menu_btn:
+		pause_menu_btn.text = I18nClass.loc("pause_menu")
+	if pause_lang_btn:
+		pause_lang_btn.text = I18nClass.loc("pause_lang")
+		_style_industrial_btn(pause_lang_btn, Color(0.2, 0.7, 1.0), Color(0.04, 0.08, 0.16, 0.95))
+		pause_lang_btn.add_theme_font_size_override("font_size", 13)
+	if chest_modal:
+		var ch_title = chest_modal.get_node_or_null("VBox/Title") as Label
+		if ch_title:
+			ch_title.text = I18nClass.loc("chest_title")
+	if chest_claim_btn:
+		chest_claim_btn.text = I18nClass.loc("chest_claim")
+	if restart_button:
+		restart_button.text = I18nClass.loc("game_over_restart")
+	if menu_button:
+		menu_button.text = I18nClass.loc("game_over_menu")
 
 func _on_radar_draw() -> void:
 	var r_size = radar_rect.size

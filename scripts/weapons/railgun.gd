@@ -150,9 +150,6 @@ func _fire_piercing_beam() -> void:
 			if particle_mgr.has_method("spawn_ion_cloud") and randf() < 0.65:
 				particle_mgr.spawn_ion_cloud(hit_p, flare_col, 2)
 
-	if hits >= 8 and player_ref and player_ref.has_method("trigger_hit_stop"):
-		player_ref.trigger_hit_stop(0.03)
-
 	queue_redraw()
 
 func _generate_helix_points() -> void:

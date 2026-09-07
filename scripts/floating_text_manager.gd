@@ -2,7 +2,7 @@ extends Node2D
 
 const MainMenu = preload("res://scripts/ui/main_menu.gd")
 
-const MAX_TEXTS: int = 180
+const MAX_TEXTS: int = 70
 
 var t_pos: PackedVector2Array = PackedVector2Array()
 var t_vel: PackedVector2Array = PackedVector2Array()
@@ -49,7 +49,7 @@ func spawn_damage(pos: Vector2, amount: float, is_crit: bool = false) -> void:
 		t_vel[idx] = Vector2(randf_range(-40, 40), randf_range(-115, -155))
 		if not particle_mgr:
 			_get_managers()
-		if particle_mgr:
+		if particle_mgr and particle_mgr.active_count < 1000:
 			particle_mgr.spawn_sparks(pos + Vector2(0, -10), Color(3.5, 2.5, 0.4, 1.0), 3)
 	else:
 		t_str[idx] = "%d" % int(amount)
@@ -112,14 +112,10 @@ func _draw() -> void:
 			var bounce = 1.0 + sin((elapsed / 0.16) * PI) * (0.42 if t_is_crit[i] else 0.22)
 			base_size = int(base_size * bounce)
 
-		# 8-way drop shadow and outline for arcade readability
+		# High-contrast drop shadow and text
 		var shadow_col = Color(0.01, 0.02, 0.04, alpha * 0.95)
 		var p = t_pos[i]
 		var text = t_str[i]
 		
-		draw_string(default_font, p + Vector2(-1, -1), text, HORIZONTAL_ALIGNMENT_CENTER, -1, base_size, shadow_col)
-		draw_string(default_font, p + Vector2(1, -1), text, HORIZONTAL_ALIGNMENT_CENTER, -1, base_size, shadow_col)
-		draw_string(default_font, p + Vector2(-1, 1), text, HORIZONTAL_ALIGNMENT_CENTER, -1, base_size, shadow_col)
-		draw_string(default_font, p + Vector2(1, 1), text, HORIZONTAL_ALIGNMENT_CENTER, -1, base_size, shadow_col)
-		draw_string(default_font, p + Vector2(0, 2), text, HORIZONTAL_ALIGNMENT_CENTER, -1, base_size, shadow_col)
+		draw_string(default_font, p + Vector2(1.5, 1.5), text, HORIZONTAL_ALIGNMENT_CENTER, -1, base_size, shadow_col)
 		draw_string(default_font, p, text, HORIZONTAL_ALIGNMENT_CENTER, -1, base_size, c)

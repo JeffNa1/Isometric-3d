@@ -10,6 +10,8 @@
 [ext_resource type="Script" path="res://scripts/camera.gd" id="8_cam"]
 [ext_resource type="PackedScene" path="res://scenes/ui/hud.tscn" id="9_hud"]
 [ext_resource type="Shader" path="res://shaders/post_process.gdshader" id="10_post"]
+[ext_resource type="PackedScene" path="res://scenes/sandbox_menu.tscn" id="11_sandbox"]
+[ext_resource type="PackedScene" path="res://scenes/dps_meter.tscn" id="12_dps"]
 
 [sub_resource type="Environment" id="Environment_glow"]
 background_mode = 3
@@ -86,4 +88,12 @@ mouse_filter = 2
 
 [node name="HUD" parent="." instance=ExtResource("9_hud")]
 layer = 10
+
+[node name="SandboxLayer" type="CanvasLayer" parent="."]
+layer = 15
+
+[node name="DPSMeter" parent="SandboxLayer" instance=ExtResource("12_dps")]
+
+[node name="SandboxMenu" parent="." instance=ExtResource("11_sandbox")]
+
 

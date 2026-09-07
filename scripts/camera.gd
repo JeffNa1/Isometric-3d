@@ -1,9 +1,11 @@
 extends Camera2D
 
-@export var max_offset: Vector2 = Vector2(24.0, 15.0)
-@export var max_roll: float = 0.035
-@export var trauma_decay: float = 2.4
-@export var max_trauma_cap: float = 0.95
+const MainMenuClass = preload("res://scripts/ui/main_menu.gd")
+
+@export var max_offset: Vector2 = Vector2(6.5, 4.0)
+@export var max_roll: float = 0.008
+@export var trauma_decay: float = 3.6
+@export var max_trauma_cap: float = 0.38
 
 var trauma: float = 0.0
 var trauma_added_this_frame: float = 0.0
@@ -23,21 +25,29 @@ func _ready() -> void:
 	noise.fractal_octaves = 2
 
 func add_trauma(amount: float) -> void:
-	# Blend trauma cleanly without runaway exponential spikes
-	trauma_added_this_frame = max(trauma_added_this_frame, amount)
-	var blended = max(trauma, trauma_added_this_frame) + (trauma_added_this_frame * 0.2)
+	var intensity = MainMenuClass.screen_shake_intensity if "screen_shake_intensity" in MainMenuClass else 1.0
+	amount *= intensity * 0.70
+	if amount <= 0.001:
+		return
+	# Balanced trauma blending (50% punch of original)
+	var capped_amount = min(amount, 0.20)
+	trauma_added_this_frame = max(trauma_added_this_frame, capped_amount)
+	var blended = max(trauma, trauma_added_this_frame) + (trauma_added_this_frame * 0.10)
 	trauma = clamp(blended, 0.0, max_trauma_cap)
 
 func add_directional_trauma(amount: float, dir: Vector2) -> void:
 	add_trauma(amount)
-	punch_impulse += dir.normalized() * (amount * 24.0)
-	punch_impulse = punch_impulse.limit_length(32.0)
+	var intensity = MainMenuClass.screen_shake_intensity if "screen_shake_intensity" in MainMenuClass else 1.0
+	punch_impulse += dir.normalized() * (min(amount, 0.18) * 8.0 * intensity)
+	punch_impulse = punch_impulse.limit_length(6.5)
 
-func trigger_zoom_punch(factor: float = 0.06, duration: float = 0.24) -> void:
+func trigger_zoom_punch(factor: float = 0.04, duration: float = 0.20) -> void:
 	if zoom_punch_tween and zoom_punch_tween.is_valid():
 		zoom_punch_tween.kill()
+	var intensity = MainMenuClass.screen_shake_intensity if "screen_shake_intensity" in MainMenuClass else 1.0
+	var capped_factor = min(factor, 0.020) * intensity
 	zoom_punch_tween = create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	zoom = base_zoom * (1.0 + factor)
+	zoom = base_zoom * (1.0 + capped_factor)
 	zoom_punch_tween.tween_property(self, "zoom", base_zoom, duration).set_ease(Tween.EASE_IN_OUT)
 
 func _process(delta: float) -> void:

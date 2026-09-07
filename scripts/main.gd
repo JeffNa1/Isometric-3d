@@ -5,7 +5,11 @@ const GemScene = preload("res://scenes/gem.tscn")
 const CrateScene = preload("res://scenes/crate.tscn")
 const BossScene = preload("res://scenes/boss.tscn")
 const BossDreadnoughtScene = preload("res://scenes/boss_dreadnought.tscn")
-const TreasureChestScene = preload("res://scenes/treasure_chest.tscn")
+const EliteScene = preload("res://scenes/elite_enemy.tscn")
+const TargetDummyScene = preload("res://scenes/target_dummy.tscn")
+const FieldPickupScene = preload("res://scenes/field_pickup.tscn")
+const I18nClass = preload("res://scripts/i18n.gd")
+const MainMenuClass = preload("res://scripts/ui/main_menu.gd")
 
 @onready var arena: Node2D = $Arena
 @onready var swarm_mgr: Node2D = $SwarmManager
@@ -42,18 +46,25 @@ var spitters_triggered: bool = false
 var exploders_triggered: bool = false
 var boss_spawned: bool = false
 var boss2_spawned: bool = false
+var elite1_spawned: bool = false
+var elite2_spawned: bool = false
 var victory_triggered: bool = false
 var is_endless_overtime: bool = false
 var enrage_level: int = 0
+var is_spawning_enabled: bool = true
 
 # Combo Multikill System
 var combo_count: int = 0
 var combo_timer: float = 0.0
 const COMBO_TIMEOUT: float = 2.2
-var next_combo_milestone: int = 5
+var next_combo_milestone: int = 50
 
-# Internal tracked list of gems (O(1) lookups, zero tree traversal)
+# Gem Object Pooling & Vampire Survivors Consolidation System
+const MAX_GEM_POOL: int = 160
+const MAX_ACTIVE_GEMS: int = 120
+var gem_pool: Array[Node2D] = []
 var active_gems: Array[Node2D] = []
+var consolidated_super_gem: Node2D = null
 
 func _ready() -> void:
 	if post_process_rect and post_process_rect.material is ShaderMaterial:
@@ -61,8 +72,66 @@ func _ready() -> void:
 	_setup_inputs_if_needed()
 	_connect_signals()
 	_spawn_pylons()
+	_init_gem_pool()
+
+	if MainMenuClass.is_sandbox_mode:
+		_setup_sandbox_mode()
+	else:
+		_setup_normal_mode()
+
+func _init_gem_pool() -> void:
+	if not entities_container:
+		return
+	for i in range(MAX_GEM_POOL):
+		var gem = GemScene.instantiate()
+		gem.is_pooled = true
+		gem.is_active = false
+		gem.visible = false
+		gem.set_process(false)
+		entities_container.add_child(gem)
+		gem.collected.connect(_on_gem_collected)
+		gem_pool.append(gem)
+
+func _setup_sandbox_mode() -> void:
+	is_spawning_enabled = false
+	_spawn_crates()
+	if is_instance_valid(player):
+		var dummy = TargetDummyScene.instantiate()
+		dummy.global_position = player.global_position + Vector2(160.0, 0.0)
+		entities_container.add_child(dummy)
+
+	var dps = get_node_or_null("SandboxLayer/DPSMeter")
+	if dps:
+		dps.visible = true
+
+	if hud:
+		var btn = hud.get_node_or_null("TopBar/BtnSandbox")
+		if btn:
+			btn.visible = true
+
+	var sb_menu = get_node_or_null("SandboxMenu")
+	if sb_menu:
+		var chk = sb_menu.get_node_or_null("Root/Panel/TabContainer/Spawner/VBox/HBoxSpawnToggle/ChkAutoSpawn")
+		if chk:
+			chk.button_pressed = false
+
+	var ftm = get_node_or_null("FloatingTextManager")
+	if ftm and is_instance_valid(player):
+		ftm.spawn_text(player.global_position + Vector2(0, -60), "PHÒNG THÍ NGHIỆM: BẤM [F1] / [~]", Color(0.2, 3.8, 1.4, 1.0))
+
+func _setup_normal_mode() -> void:
+	is_spawning_enabled = true
 	_spawn_crates()
 	_spawn_initial_horde()
+
+	var dps = get_node_or_null("SandboxLayer/DPSMeter")
+	if dps:
+		dps.visible = false
+
+	if hud:
+		var btn = hud.get_node_or_null("TopBar/BtnSandbox")
+		if btn:
+			btn.visible = false
 
 func _spawn_pylons() -> void:
 	if not pylons_container:
@@ -105,7 +174,7 @@ func vacuum_all_gems() -> void:
 	if not is_instance_valid(player):
 		return
 	for g in active_gems:
-		if is_instance_valid(g) and g.has_method("attract_to"):
+		if is_instance_valid(g) and g.is_active and g.has_method("attract_to"):
 			g.attract_to(player)
 
 func _setup_inputs_if_needed() -> void:
@@ -168,13 +237,13 @@ func _process(delta: float) -> void:
 		combo_timer -= delta
 		if combo_timer <= 0.0:
 			combo_count = 0
-			next_combo_milestone = 5
+			next_combo_milestone = _get_initial_combo_milestone()
 			if hud and hud.has_method("update_combo"):
 				hud.update_combo(0)
 
-	# Periodic supply crate airdrop
+	# Periodic supply crate airdrop (Vampire Survivors paced supply cadence)
 	supply_drop_timer += delta
-	if supply_drop_timer >= 40.0:
+	if supply_drop_timer >= 60.0:
 		supply_drop_timer = 0.0
 		_drop_supply_crate()
 
@@ -194,119 +263,131 @@ func _drop_supply_crate() -> void:
 	crate.position = player.global_position + offset
 	entities_container.add_child(crate)
 	if hud and hud.has_method("show_surge_warning"):
-		hud.show_surge_warning("📦 THÙNG TIẾP TẾ CHIẾN THUẬT ĐÃ ĐÁP XUỐNG! 📦")
+		hud.show_surge_warning(I18nClass.loc("alert_crate"))
 
 func _process_spawn_director(delta: float) -> void:
+	if not is_spawning_enabled:
+		return
 	spawn_timer += delta
 
-	# Phase 1: 00:00 - 01:30 | Early Swarm (Crawlers)
-	if elapsed_time < 90.0:
-		if elapsed_time < 40.0:
-			if spawn_timer >= 1.35:
+	# Phase 1: 00:00 - 01:00 | Early Fast Swarm (Crawlers)
+	if elapsed_time < 60.0:
+		if elapsed_time < 30.0:
+			if spawn_timer >= 0.65:
 				spawn_timer = 0.0
-				if swarm_mgr.active_count < 95:
-					_spawn_wave_cluster(randi_range(10, 18), 0)
+				if swarm_mgr.active_count < 350:
+					_spawn_wave_cluster(randi_range(20, 35), 0)
 		else:
-			if spawn_timer >= 1.05:
+			if spawn_timer >= 0.50:
 				spawn_timer = 0.0
-				if swarm_mgr.active_count < 220:
-					_spawn_wave_cluster(randi_range(18, 32), 0)
+				if swarm_mgr.active_count < 550:
+					_spawn_wave_cluster(randi_range(30, 50), 0)
 
-	# Phase 2: 01:30 - 03:00 | Scout Swarm Flankers
-	elif elapsed_time < 180.0:
+	# Phase 2: 01:00 - 02:00 | Scout Swarm Flankers & Surge & Elite 1
+	elif elapsed_time < 120.0:
 		if not surge_triggered:
 			surge_triggered = true
 			_trigger_swarm_surge()
 
-		if spawn_timer >= 0.85:
-			spawn_timer = 0.0
-			if swarm_mgr.active_count < 750:
-				var e_type = 1 if randf() < 0.35 else 0
-				_spawn_wave_cluster(randi_range(35, 65), e_type)
+		# Elite 1: 01:45 Giant Champion (Drops Treasure Chest 1)
+		if elapsed_time >= 105.0 and not elite1_spawned:
+			elite1_spawned = true
+			_spawn_elite_enemy(1)
 
-	# Phase 3: 03:00 - 05:00 | Toxic Spitters & Brutes
-	elif elapsed_time < 300.0:
+		if spawn_timer >= 0.45:
+			spawn_timer = 0.0
+			if swarm_mgr.active_count < 1200:
+				var e_type = 1 if randf() < 0.4 else 0
+				_spawn_wave_cluster(randi_range(45, 80), e_type)
+
+	# Phase 3: 02:00 - 03:30 | Toxic Spitters & Brutes
+	elif elapsed_time < 210.0:
 		if not spitters_triggered:
 			spitters_triggered = true
 			if hud.has_method("show_surge_warning"):
-				hud.show_surge_warning("☣️ CẢNH BÁO: BỌ PHUN ĐỘC TẦM XA TIẾP CẬN! ☣️")
+				hud.show_surge_warning(I18nClass.loc("alert_spitters"))
 
-		if spawn_timer >= 0.60:
+		if spawn_timer >= 0.40:
 			spawn_timer = 0.0
-			if swarm_mgr.active_count < 2600:
+			if swarm_mgr.active_count < 2800:
 				var roll = randf()
 				var e_type = 3 if roll < 0.25 else (2 if roll < 0.35 else (1 if roll < 0.6 else 0))
-				_spawn_wave_cluster(randi_range(80, 150), e_type)
+				_spawn_wave_cluster(randi_range(80, 160), e_type)
 
-	# Phase 4: 05:00 - 07:30 | Boss 1: Apex Leviathan
-	elif elapsed_time < 450.0:
+	# Phase 4: 03:30 - 05:00 | Boss 1: Apex Leviathan
+	elif elapsed_time < 300.0:
 		if not boss_spawned:
 			boss_spawned = true
 			_spawn_boss_leviathan()
 
-		if spawn_timer >= 0.52:
+		if spawn_timer >= 0.38:
 			spawn_timer = 0.0
-			if swarm_mgr.active_count < 3200:
+			if swarm_mgr.active_count < 3400:
 				var roll = randf()
 				var e_type = 3 if roll < 0.2 else (2 if roll < 0.35 else (1 if roll < 0.6 else 0))
 				_spawn_wave_cluster(randi_range(100, 180), e_type)
 
-	# Phase 5: 07:30 - 10:00 | Kamikaze Exploders Surge
-	elif elapsed_time < 600.0:
+	# Phase 5: 05:00 - 07:00 | Kamikaze Exploders Surge & Elite 2
+	elif elapsed_time < 420.0:
 		if not exploders_triggered:
 			exploders_triggered = true
 			if hud.has_method("show_surge_warning"):
-				hud.show_surge_warning("⚠️ NGUY CẤP: BẦY BỌ TỰ NỔ CẢM TỬ LAO TỚI! ⚠️")
+				hud.show_surge_warning(I18nClass.loc("alert_exploders"))
 			if sound_mgr and sound_mgr.has_method("play_alarm"):
 				sound_mgr.play_alarm()
 
-		if spawn_timer >= 0.48:
+		# Elite 2: 05:30 Dread Champion (Drops Treasure Chest 3)
+		if elapsed_time >= 330.0 and not elite2_spawned:
+			elite2_spawned = true
+			_spawn_elite_enemy(2)
+
+		if spawn_timer >= 0.35:
 			spawn_timer = 0.0
-			if swarm_mgr.active_count < 3800:
+			if swarm_mgr.active_count < 4000:
 				var roll = randf()
 				var e_type = 4 if roll < 0.35 else (3 if roll < 0.55 else (2 if roll < 0.7 else 0))
 				_spawn_wave_cluster(randi_range(110, 200), e_type)
 
-	# Phase 6: 10:00 - 12:30 | Boss 2: Cyber Dreadnought
-	elif elapsed_time < 750.0:
+	# Phase 6: 07:00 - 08:30 | Boss 2: Cyber Dreadnought
+	elif elapsed_time < 510.0:
 		if not boss2_spawned:
 			boss2_spawned = true
 			_spawn_boss_dreadnought()
 
-		if spawn_timer >= 0.45:
+		if spawn_timer >= 0.32:
 			spawn_timer = 0.0
-			if swarm_mgr.active_count < 4200:
+			if swarm_mgr.active_count < 4400:
 				var e_type = randi() % 5
-				_spawn_wave_cluster(randi_range(130, 220), e_type)
+				_spawn_wave_cluster(randi_range(130, 230), e_type)
 
-	# Phase 7: 12:30 - 15:00 | Full Apocalypse Swarm (All 5 Enemy Types)
-	elif elapsed_time < 900.0:
+	# Phase 7: 08:30 - 10:00 | Full Apocalypse Swarm (All 5 Enemy Types)
+	elif elapsed_time < 600.0:
 		if not titans_triggered:
 			titans_triggered = true
 			_trigger_titan_wave()
 
-		if spawn_timer >= 0.40:
+		if spawn_timer >= 0.30:
 			spawn_timer = 0.0
 			if swarm_mgr.active_count < 4800:
 				var e_type = randi() % 5
 				_spawn_wave_cluster(randi_range(150, 260), e_type)
 
-	# Phase 8: 15:00+ | Victory / Endless Overtime Mode
+	# Phase 8: 10:00+ | Victory / Endless Overtime Mode
 	else:
 		if not victory_triggered:
 			victory_triggered = true
 			is_endless_overtime = true
 			if hud.has_method("show_surge_warning"):
-				hud.show_surge_warning("👑 CHIẾN THẮNG 15 PHÚT! KÍCH HOẠT CHẾ ĐỘ VÔ TẬN! 👑")
+				hud.show_surge_warning(I18nClass.loc("alert_win_15"))
 
-		# Ramp Enrage level every 90 seconds in overtime
-		var current_enrage = int((elapsed_time - 900.0) / 90.0) + 1
+		# Ramp Enrage level every 60 seconds in overtime
+		var current_enrage = int((elapsed_time - 600.0) / 60.0) + 1
 		if current_enrage > enrage_level:
 			enrage_level = current_enrage
 			if hud.has_method("show_surge_warning"):
-				hud.show_surge_warning("🔥 CUỒNG NỘ VÔ TẬN CẤP %d: QUÁI TĂNG TỐC & SÁT THƯƠNG! 🔥" % enrage_level)
+				hud.show_surge_warning(I18nClass.loc("alert_enrage") % enrage_level)
 
-		if spawn_timer >= 0.38:
+		if spawn_timer >= 0.28:
 			spawn_timer = 0.0
 			if swarm_mgr.active_count < 5000:
 				var e_type = randi() % 5
@@ -318,7 +399,7 @@ func _spawn_boss_leviathan() -> void:
 	if sound_mgr and sound_mgr.has_method("play_alarm"):
 		sound_mgr.play_alarm()
 	if hud and hud.has_method("show_surge_warning"):
-		hud.show_surge_warning("💀 BÁ CHỦ VỰC THẲM: APEX LEVIATHAN ĐÃ XUẤT HIỆN! 💀")
+		hud.show_surge_warning(I18nClass.loc("alert_leviathan"))
 	if camera and camera.has_method("add_trauma"):
 		camera.add_trauma(0.65)
 
@@ -332,7 +413,7 @@ func _spawn_boss_dreadnought() -> void:
 	if sound_mgr and sound_mgr.has_method("play_alarm"):
 		sound_mgr.play_alarm()
 	if hud and hud.has_method("show_surge_warning"):
-		hud.show_surge_warning("⚡ CHIẾN HẠM TITAN: CYBER DREADNOUGHT TIẾP CẬN! ⚡")
+		hud.show_surge_warning(I18nClass.loc("alert_dreadnought"))
 	if camera and camera.has_method("add_trauma"):
 		camera.add_trauma(0.75)
 
@@ -340,11 +421,30 @@ func _spawn_boss_dreadnought() -> void:
 	boss.global_position = player.global_position + Vector2(-650.0, 100.0)
 	entities_container.add_child(boss)
 
+func _spawn_elite_enemy(tier: int) -> void:
+	if not entities_container or not is_instance_valid(player):
+		return
+	if sound_mgr and sound_mgr.has_method("play_alarm"):
+		sound_mgr.play_alarm()
+	if hud and hud.has_method("show_surge_warning"):
+		hud.show_surge_warning(I18nClass.loc("alert_elite"))
+	if camera and camera.has_method("add_trauma"):
+		camera.add_trauma(0.55)
+
+	var elite = EliteScene.instantiate()
+	var angle = randf() * TAU
+	var spawn_pos = player.global_position + Vector2(cos(angle) * 700.0, sin(angle) * 450.0)
+	spawn_pos.x = clamp(spawn_pos.x, -4700.0, 4700.0)
+	spawn_pos.y = clamp(spawn_pos.y, -4700.0, 4700.0)
+	elite.global_position = spawn_pos
+	entities_container.add_child(elite)
+	elite.setup(tier)
+
 func _trigger_swarm_surge() -> void:
 	if sound_mgr and sound_mgr.has_method("play_alarm"):
 		sound_mgr.play_alarm()
 	if hud.has_method("show_surge_warning"):
-		hud.show_surge_warning("⚠️ CẢNH BÁO: ĐỢT SÓNG QUÁI VÂY HÃM! ⚠️")
+		hud.show_surge_warning(I18nClass.loc("alert_swarm"))
 	if camera and camera.has_method("add_trauma"):
 		camera.add_trauma(0.4)
 
@@ -361,7 +461,7 @@ func _trigger_titan_wave() -> void:
 	if sound_mgr and sound_mgr.has_method("play_alarm"):
 		sound_mgr.play_alarm()
 	if hud.has_method("show_surge_warning"):
-		hud.show_surge_warning("⚠️ CỰ THÚ VOLCANIC BEHEMOTH TIẾP CẬN! ⚠️")
+		hud.show_surge_warning(I18nClass.loc("alert_behemoth"))
 	if camera and camera.has_method("add_trauma"):
 		camera.add_trauma(0.45)
 
@@ -385,35 +485,79 @@ func _spawn_wave_cluster(count: int, enemy_type: int) -> void:
 
 	swarm_mgr.spawn_cluster(spawn_pos, count, enemy_type)
 
-func register_gem(gem: Node2D) -> void:
-	active_gems.append(gem)
-	gem.tree_exited.connect(_on_gem_exited.bind(gem))
-
-func _on_gem_exited(gem: Node2D) -> void:
+func _on_gem_collected(gem: Node2D) -> void:
+	if gem == consolidated_super_gem:
+		consolidated_super_gem = null
 	active_gems.erase(gem)
+	if not gem_pool.has(gem):
+		gem_pool.append(gem)
+
+func register_gem(gem: Node2D) -> void:
+	if not active_gems.has(gem):
+		active_gems.append(gem)
+	if not gem.collected.is_connected(_on_gem_collected):
+		gem.collected.connect(_on_gem_collected)
 
 func spawn_gem(pos: Vector2, xp_val: int, is_boss: bool) -> void:
-	# 1. Merge into nearby stationary gem if within 75px
-	for g in active_gems:
-		if is_instance_valid(g) and g.is_inside_tree() and g.target == null:
-			if g.global_position.distance_squared_to(pos) <= 5625.0:
+	# 1. Fast reverse check on recent gems to merge clusters within 65px
+	var check_count = min(active_gems.size(), 20)
+	for i in range(active_gems.size() - 1, active_gems.size() - 1 - check_count, -1):
+		var g = active_gems[i]
+		if is_instance_valid(g) and g.is_active and g.target == null:
+			if g.global_position.distance_squared_to(pos) <= 4225.0: # 65px
 				g.xp_value += xp_val
+				if is_boss:
+					g.is_super_gem = true
 				g.queue_redraw()
 				return
 
-	# 2. Cap 90 gems
-	if active_gems.size() >= 90 and not is_boss:
-		var best_gem = active_gems[0]
-		best_gem.xp_value += xp_val
-		best_gem.queue_redraw()
-		return
+	# 2. Vampire Survivors style Gem Consolidation if active gems hit cap (120 gems)
+	if active_gems.size() >= MAX_ACTIVE_GEMS:
+		if not is_instance_valid(consolidated_super_gem) or not consolidated_super_gem.is_active or consolidated_super_gem.target != null:
+			# Pick the gem furthest from player to become the red super gem
+			var best_idx = 0
+			var max_dist_sq = 0.0
+			var p_pos = player.global_position if is_instance_valid(player) else Vector2.ZERO
+			for i in range(min(active_gems.size(), 20)):
+				var cand = active_gems[i]
+				if is_instance_valid(cand) and cand.is_active and cand.target == null:
+					var d_sq = cand.global_position.distance_squared_to(p_pos)
+					if d_sq > max_dist_sq:
+						max_dist_sq = d_sq
+						best_idx = i
+			if best_idx < active_gems.size():
+				consolidated_super_gem = active_gems[best_idx]
+				consolidated_super_gem.is_super_gem = true
 
-	var gem = GemScene.instantiate()
-	gem.xp_value = xp_val
-	gem.is_super_gem = is_boss
-	gem.position = pos
-	entities_container.call_deferred("add_child", gem)
-	register_gem(gem)
+		if is_instance_valid(consolidated_super_gem) and consolidated_super_gem.is_active:
+			consolidated_super_gem.xp_value += xp_val
+			consolidated_super_gem.queue_redraw()
+			return
+
+	# 3. Pull from pre-allocated Gem Object Pool (zero instantiate overhead)
+	var gem: Node2D = null
+	while not gem_pool.is_empty():
+		var cand = gem_pool.pop_back()
+		if is_instance_valid(cand):
+			gem = cand
+			break
+
+	if not gem:
+		gem = GemScene.instantiate()
+		gem.is_pooled = true
+		entities_container.add_child(gem)
+		gem.collected.connect(_on_gem_collected)
+
+	gem.activate(pos, xp_val, is_boss)
+	active_gems.append(gem)
+
+func _get_initial_combo_milestone() -> int:
+	if elapsed_time < 90.0:
+		return 50
+	elif elapsed_time < 240.0:
+		return 100
+	else:
+		return 200
 
 func _on_enemy_killed(xp_val: int, pos: Vector2, is_boss: bool) -> void:
 	total_kills += 1
@@ -426,72 +570,50 @@ func _on_enemy_killed(xp_val: int, pos: Vector2, is_boss: bool) -> void:
 
 	if combo_count >= next_combo_milestone:
 		_trigger_combo_announcement(combo_count)
-		if combo_count >= 500:
-			next_combo_milestone += 250
+		if combo_count >= 2000:
+			next_combo_milestone += 1000
+		elif combo_count >= 1000:
+			next_combo_milestone += 500
+		elif combo_count >= 500:
+			next_combo_milestone = 1000
 		elif combo_count >= 250:
 			next_combo_milestone = 500
 		elif combo_count >= 100:
 			next_combo_milestone = 250
-		elif combo_count >= 75:
-			next_combo_milestone = 100
 		elif combo_count >= 50:
-			next_combo_milestone = 75
-		elif combo_count >= 25:
-			next_combo_milestone = 50
-		elif combo_count >= 10:
-			next_combo_milestone = 25
-		elif combo_count >= 5:
-			next_combo_milestone = 10
+			next_combo_milestone = 100
 		else:
-			next_combo_milestone = 5
+			next_combo_milestone = 50
 
 	# Spawn Gem with cluster consolidation
 	if randf() < 0.45 or is_boss:
 		spawn_gem(pos, xp_val, is_boss)
 
-	# Mini-Boss Chest Drop (2.5% chance from Brute mini-bosses)
-	if is_boss and randf() < 0.025:
-		var chest = TreasureChestScene.instantiate()
-		chest.global_position = pos
-		entities_container.call_deferred("add_child", chest)
-
 func _trigger_combo_announcement(streak: int) -> void:
-	var title = "⚡ %d COMBO!" % streak
-	var col = Color(1.0, 0.85, 0.2, 1.0)
-	if streak >= 500:
-		title = "👑 %d DIỆT VỰC THẲM THẦN THÁNH! 👑" % streak
+	var title = I18nClass.loc("streak_50", "⚡ %d COMBO! ⚡") % streak
+	var col = Color(0.4, 0.85, 1.0, 1.0)
+
+	if streak >= 3000:
+		title = I18nClass.loc("streak_3000", "🌌 %d TRANSCENDENCE! 🌌") % streak
+		col = Color(0.9, 0.4, 1.0, 1.0)
+	elif streak >= 2000:
+		title = I18nClass.loc("streak_2000", "⚡ %d EXTINCTION EVENT! ⚡") % streak
+		col = Color(0.2, 1.0, 0.85, 1.0)
+	elif streak >= 1000:
+		title = I18nClass.loc("streak_1000", "👑 %d GODLIKE MASSACRE! 👑") % streak
+		col = Color(1.0, 0.85, 0.2, 1.0)
+	elif streak >= 500:
+		title = I18nClass.loc("streak_500", "💀 %d UNSTOPPABLE! 💀") % streak
 		col = Color(1.0, 0.2, 0.6, 1.0)
 	elif streak >= 250:
-		title = "💥 %d HỦY DIỆT KHÔNG THỂ CẢN! 💥" % streak
-		col = Color(1.0, 0.3, 0.2, 1.0)
+		title = I18nClass.loc("streak_250", "💥 %d RAMPAGE! 💥") % streak
+		col = Color(1.0, 0.4, 0.15, 1.0)
 	elif streak >= 100:
-		title = "☣️ %d EXTINCTION EVENT! ☣️" % streak
-		col = Color(1.0, 0.2, 0.3, 1.0)
-	elif streak >= 75:
-		title = "👑 %d GODLIKE! 👑" % streak
-		col = Color(1.0, 0.6, 0.1, 1.0)
-	elif streak >= 50:
-		title = "💀 %d UNSTOPPABLE! 💀" % streak
-		col = Color(0.9, 0.2, 1.0, 1.0)
-	elif streak >= 25:
-		title = "💥 %d RAMPAGE! 💥" % streak
-		col = Color(0.2, 1.0, 0.5, 1.0)
-	elif streak >= 10:
-		title = "🔥 %d ULTRA KILL! 🔥" % streak
+		title = I18nClass.loc("streak_100", "🔥 %d ULTRA KILL! 🔥") % streak
 		col = Color(0.3, 0.9, 1.0, 1.0)
-	elif streak >= 5:
-		title = "⚡ %d MEGA KILL! ⚡" % streak
-		col = Color(0.4, 0.8, 1.0, 1.0)
 
 	if hud and hud.has_method("show_combo_milestone"):
 		hud.show_combo_milestone(title, col)
-
-	if camera and camera.has_method("add_trauma"):
-		camera.add_trauma(0.35)
-	if camera and camera.has_method("trigger_zoom_punch"):
-		camera.trigger_zoom_punch(0.04, 0.2)
-
-	trigger_chromatic_aberration_pulse(0.018, 0.16)
 
 func _on_player_died() -> void:
 	hud.show_game_over(player.level, elapsed_time, total_kills)
@@ -525,3 +647,163 @@ func trigger_damage_vignette(intensity: float = 0.65, duration: float = 0.25) ->
 	vignette_max_intensity = intensity
 	vignette_duration = max(0.001, duration)
 	vignette_timer = vignette_duration
+
+# ==========================================
+# 🛠️ SANDBOX MODE CONTROLLER API 🛠️
+# ==========================================
+
+func toggle_spawning(enabled: bool) -> void:
+	is_spawning_enabled = enabled
+
+func clear_all_enemies() -> void:
+	if swarm_mgr and swarm_mgr.has_method("clear_all"):
+		swarm_mgr.clear_all()
+
+	# Free all bosses and elites (except immortal target dummies)
+	var bosses = get_tree().get_nodes_in_group("boss")
+	for b in bosses:
+		if is_instance_valid(b) and not b.is_in_group("target_dummies"):
+			b.queue_free()
+
+func clear_all_pickups_and_crates() -> void:
+	var crates = get_tree().get_nodes_in_group("crates")
+	for c in crates:
+		if is_instance_valid(c): c.queue_free()
+
+	for g in active_gems:
+		if is_instance_valid(g):
+			if g.is_pooled:
+				g.deactivate()
+				if not gem_pool.has(g):
+					gem_pool.append(g)
+			else:
+				g.queue_free()
+	active_gems.clear()
+	consolidated_super_gem = null
+
+	var pickups = get_tree().get_nodes_in_group("field_pickups")
+	for p in pickups:
+		if is_instance_valid(p): p.queue_free()
+
+	var chests = get_tree().get_nodes_in_group("treasure_chests")
+	for ch in chests:
+		if is_instance_valid(ch): ch.queue_free()
+
+func jump_to_time(target_seconds: float) -> void:
+	target_seconds = max(0.0, target_seconds)
+	elapsed_time = target_seconds
+
+	surge_triggered = (target_seconds >= 60.0)
+	elite1_spawned = (target_seconds >= 105.0)
+	spitters_triggered = (target_seconds >= 120.0)
+	boss_spawned = (target_seconds >= 210.0)
+	exploders_triggered = (target_seconds >= 300.0)
+	elite2_spawned = (target_seconds >= 330.0)
+	boss2_spawned = (target_seconds >= 420.0)
+	titans_triggered = (target_seconds >= 510.0)
+	victory_triggered = (target_seconds >= 600.0)
+	is_endless_overtime = (target_seconds >= 600.0)
+
+	if hud and hud.has_method("update_time"):
+		hud.update_time(elapsed_time)
+
+func restart_match() -> void:
+	elapsed_time = 0.0
+	total_kills = 0
+	combo_count = 0
+	combo_timer = 0.0
+	next_combo_milestone = _get_initial_combo_milestone()
+	supply_drop_timer = 0.0
+
+	surge_triggered = false
+	titans_triggered = false
+	spitters_triggered = false
+	exploders_triggered = false
+	boss_spawned = false
+	boss2_spawned = false
+	elite1_spawned = false
+	elite2_spawned = false
+	victory_triggered = false
+	is_endless_overtime = false
+	enrage_level = 0
+
+	clear_all_enemies()
+	clear_all_pickups_and_crates()
+
+	if is_instance_valid(player):
+		player.global_position = Vector2.ZERO
+		player.current_health = player.max_health
+		player.is_invulnerable = false
+		player.invuln_timer = 0.0
+		player.health_changed.emit(player.current_health, player.max_health)
+
+	if MainMenuClass.is_sandbox_mode:
+		_setup_sandbox_mode()
+	else:
+		_spawn_crates()
+		_spawn_initial_horde()
+
+	if hud:
+		if hud.has_method("set_kills"): hud.set_kills(0)
+		if hud.has_method("update_time"): hud.update_time(0.0)
+		if hud.has_method("update_combo"): hud.update_combo(0)
+
+func spawn_sandbox_entity(e_type: String, count: int, at_mouse: bool = false) -> void:
+	count = clampi(count, 1, 1000)
+	var origin = get_global_mouse_position() if at_mouse else (player.global_position if is_instance_valid(player) else Vector2.ZERO)
+
+	for i in range(count):
+		var offset = Vector2.ZERO
+		if count > 1 or not at_mouse:
+			var angle = (TAU / float(count)) * float(i) if count > 1 else randf() * TAU
+			var dist = randf_range(80.0, 240.0) if count > 1 else randf_range(120.0, 220.0)
+			offset = Vector2(cos(angle) * dist, sin(angle) * dist * 0.65)
+		var spawn_pos = origin + offset
+
+		match e_type:
+			"crawler":
+				swarm_mgr.spawn_enemy(spawn_pos, 0)
+			"scout":
+				swarm_mgr.spawn_enemy(spawn_pos, 1)
+			"brute":
+				swarm_mgr.spawn_enemy(spawn_pos, 2)
+			"spitter":
+				swarm_mgr.spawn_enemy(spawn_pos, 3)
+			"exploder":
+				swarm_mgr.spawn_enemy(spawn_pos, 4)
+			"elite_tier1":
+				var elite = EliteScene.instantiate()
+				elite.global_position = spawn_pos
+				entities_container.add_child(elite)
+				elite.setup(1)
+			"elite_tier2":
+				var elite = EliteScene.instantiate()
+				elite.global_position = spawn_pos
+				entities_container.add_child(elite)
+				elite.setup(2)
+			"boss_leviathan":
+				var b = BossScene.instantiate()
+				b.global_position = spawn_pos
+				entities_container.add_child(b)
+			"boss_dreadnought":
+				var b = BossDreadnoughtScene.instantiate()
+				b.global_position = spawn_pos
+				entities_container.add_child(b)
+			"target_dummy":
+				var dummy = TargetDummyScene.instantiate()
+				dummy.global_position = spawn_pos
+				entities_container.add_child(dummy)
+			"crate":
+				var c = CrateScene.instantiate()
+				c.global_position = spawn_pos
+				entities_container.add_child(c)
+			"gem_regular":
+				spawn_gem(spawn_pos, 15, false)
+			"gem_super":
+				spawn_gem(spawn_pos, 80, true)
+			"pickup_nuke", "pickup_vacuum", "pickup_medkit", "pickup_overclock":
+				var p_name = e_type.replace("pickup_", "")
+				var pickup = FieldPickupScene.instantiate()
+				pickup.setup(p_name)
+				pickup.global_position = spawn_pos
+				entities_container.add_child(pickup)
