@@ -1,0 +1,63 @@
+[gd_scene load_steps=7 format=3 uid="uid://world_3d_player_001"]
+
+[ext_resource type="Script" path="res://scripts/world_3d_controller.gd" id="1_world"]
+[ext_resource type="PackedScene" path="res://scenes/arena.tscn" id="2_arena"]
+[ext_resource type="Script" path="res://scripts/knight_2d_controller.gd" id="3_player"]
+[ext_resource type="Script" path="res://scripts/camera.gd" id="4_camera"]
+
+[sub_resource type="Environment" id="Environment_glow"]
+background_mode = 3
+glow_enabled = true
+glow_intensity = 0.55
+glow_strength = 0.90
+glow_bloom = 0.08
+glow_blend_mode = 1
+glow_hdr_threshold = 1.15
+tonemap_mode = 3
+tonemap_exposure = 1.05
+
+[node name="World3DPlayer" type="Node2D"]
+script = ExtResource("1_world")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_glow")
+
+[node name="Arena" parent="." instance=ExtResource("2_arena")]
+
+[node name="Player" type="CharacterBody2D" parent="."]
+script = ExtResource("3_player")
+
+[node name="Camera2D" type="Camera2D" parent="."]
+zoom = Vector2(1.45, 1.45)
+position_smoothing_enabled = true
+position_smoothing_speed = 9.0
+script = ExtResource("4_camera")
+
+[node name="HUD" type="CanvasLayer" parent="."]
+
+[node name="ControlsPanel" type="PanelContainer" parent="HUD"]
+offset_left = 24.0
+offset_top = 24.0
+offset_right = 380.0
+offset_bottom = 110.0
+
+[node name="Margin" type="MarginContainer" parent="HUD/ControlsPanel"]
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 10
+
+[node name="VBox" type="VBoxContainer" parent="HUD/ControlsPanel/Margin"]
+theme_override_constants/separation = 4
+
+[node name="Title" type="Label" parent="HUD/ControlsPanel/Margin/VBox"]
+text = "MEDIEVAL DUNGEON — 2.5D DARK KNIGHT (8-WAY)"
+theme_override_colors/font_color = Color(0.92, 0.78, 0.35, 1)
+
+[node name="Controls" type="Label" parent="HUD/ControlsPanel/Margin/VBox"]
+text = "WASD or 1-8: 8 Directions | SHIFT: Sprint
+SPACE: Tactical Dodge Burst | Scroll: Zoom
+RMB / J: Broadsword Slash Combo (3-Hit)
+LMB (Hold) / K: Heater Shield Guard
+F: Precise Timed Parry Deflect (Sparks)"
+theme_override_colors/font_color = Color(0.85, 0.85, 0.88, 0.9)

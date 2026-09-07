@@ -1,6 +1,6 @@
 extends Camera2D
 
-const MainMenuClass = preload("res://scripts/ui/main_menu.gd")
+
 
 @export var max_offset: Vector2 = Vector2(6.5, 4.0)
 @export var max_roll: float = 0.008
@@ -25,8 +25,7 @@ func _ready() -> void:
 	noise.fractal_octaves = 2
 
 func add_trauma(amount: float) -> void:
-	var intensity = MainMenuClass.screen_shake_intensity if "screen_shake_intensity" in MainMenuClass else 1.0
-	amount *= intensity * 0.70
+	amount *= 0.70
 	if amount <= 0.001:
 		return
 	# Balanced trauma blending (50% punch of original)
@@ -37,15 +36,13 @@ func add_trauma(amount: float) -> void:
 
 func add_directional_trauma(amount: float, dir: Vector2) -> void:
 	add_trauma(amount)
-	var intensity = MainMenuClass.screen_shake_intensity if "screen_shake_intensity" in MainMenuClass else 1.0
-	punch_impulse += dir.normalized() * (min(amount, 0.18) * 8.0 * intensity)
+	punch_impulse += dir.normalized() * (min(amount, 0.18) * 8.0)
 	punch_impulse = punch_impulse.limit_length(6.5)
 
 func trigger_zoom_punch(factor: float = 0.04, duration: float = 0.20) -> void:
 	if zoom_punch_tween and zoom_punch_tween.is_valid():
 		zoom_punch_tween.kill()
-	var intensity = MainMenuClass.screen_shake_intensity if "screen_shake_intensity" in MainMenuClass else 1.0
-	var capped_factor = min(factor, 0.020) * intensity
+	var capped_factor = min(factor, 0.020)
 	zoom_punch_tween = create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	zoom = base_zoom * (1.0 + capped_factor)
 	zoom_punch_tween.tween_property(self, "zoom", base_zoom, duration).set_ease(Tween.EASE_IN_OUT)
@@ -72,4 +69,13 @@ func _process(delta: float) -> void:
 	else:
 		offset = Vector2.ZERO
 		rotation = 0.0
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.is_pressed():
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			base_zoom = (base_zoom * 1.1).clamp(Vector2(0.8, 0.8), Vector2(2.8, 2.8))
+			zoom = base_zoom
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			base_zoom = (base_zoom * 0.9).clamp(Vector2(0.8, 0.8), Vector2(2.8, 2.8))
+			zoom = base_zoom
 
