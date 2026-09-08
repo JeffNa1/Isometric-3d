@@ -1,9 +1,10 @@
 [gd_scene load_steps=7 format=3 uid="uid://world_3d_player_001"]
 
-[ext_resource type="Script" path="res://scripts/world_3d_controller.gd" id="1_world"]
-[ext_resource type="PackedScene" path="res://scenes/arena.tscn" id="2_arena"]
-[ext_resource type="Script" path="res://scripts/knight_2d_controller.gd" id="3_player"]
-[ext_resource type="Script" path="res://scripts/camera.gd" id="4_camera"]
+[ext_resource type="Script" path="res://scripts/core/world_3d_controller.gd" id="1_world"]
+[ext_resource type="Script" path="res://scripts/dungeon/dungeon_generator.gd" id="2_dungeon"]
+[ext_resource type="Script" path="res://scripts/player/knight_2d_controller.gd" id="3_player"]
+[ext_resource type="Script" path="res://scripts/core/camera.gd" id="4_camera"]
+[ext_resource type="Script" path="res://scripts/ui/debug_spawner_panel.gd" id="5_debug"]
 
 [sub_resource type="Environment" id="Environment_glow"]
 background_mode = 3
@@ -17,18 +18,27 @@ tonemap_mode = 3
 tonemap_exposure = 1.05
 
 [node name="World3DPlayer" type="Node2D"]
+y_sort_enabled = true
 script = ExtResource("1_world")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_glow")
 
-[node name="Arena" parent="." instance=ExtResource("2_arena")]
+[node name="FloorContainer" type="Node2D" parent="."]
+z_index = -10
 
-[node name="Player" type="CharacterBody2D" parent="."]
+[node name="YSortEntities" type="Node2D" parent="."]
+y_sort_enabled = true
+
+[node name="Player" type="CharacterBody2D" parent="YSortEntities"]
+y_sort_enabled = true
 script = ExtResource("3_player")
 
+[node name="DungeonGenerator" type="Node2D" parent="."]
+script = ExtResource("2_dungeon")
+
 [node name="Camera2D" type="Camera2D" parent="."]
-zoom = Vector2(1.45, 1.45)
+zoom = Vector2(1, 1)
 position_smoothing_enabled = true
 position_smoothing_speed = 9.0
 script = ExtResource("4_camera")
@@ -36,10 +46,14 @@ script = ExtResource("4_camera")
 [node name="HUD" type="CanvasLayer" parent="."]
 
 [node name="ControlsPanel" type="PanelContainer" parent="HUD"]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
 offset_left = 24.0
-offset_top = 24.0
-offset_right = 380.0
-offset_bottom = 110.0
+offset_top = -90.0
+offset_right = 530.0
+offset_bottom = -20.0
+grow_vertical = 0
 
 [node name="Margin" type="MarginContainer" parent="HUD/ControlsPanel"]
 theme_override_constants/margin_left = 12
@@ -55,9 +69,119 @@ text = "MEDIEVAL DUNGEON — 2.5D DARK KNIGHT (8-WAY)"
 theme_override_colors/font_color = Color(0.92, 0.78, 0.35, 1)
 
 [node name="Controls" type="Label" parent="HUD/ControlsPanel/Margin/VBox"]
-text = "WASD or 1-8: 8 Directions | SHIFT: Sprint
-SPACE: Tactical Dodge Burst | Scroll: Zoom
-RMB / J: Broadsword Slash Combo (3-Hit)
-LMB (Hold) / K: Heater Shield Guard
-F: Precise Timed Parry Deflect (Sparks)"
+text = "[R]: Regenerate Dungeon Layout (Random Seed) | WASD: Move | SPACE: Dodge
+LMB / J: Sword Combo | F (Hold) / K: Shield Guard | RMB: Timed Parry Deflect | [B]: Toggle Debug Spawner"
 theme_override_colors/font_color = Color(0.85, 0.85, 0.88, 0.9)
+
+[node name="DebugSpawnerPanel" type="PanelContainer" parent="HUD"]
+visible = false
+offset_left = 980.0
+offset_top = 236.0
+offset_right = 1264.0
+offset_bottom = 690.0
+script = ExtResource("5_debug")
+
+[node name="Margin" type="MarginContainer" parent="HUD/DebugSpawnerPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 12
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 12
+theme_override_constants/margin_bottom = 10
+
+[node name="VBox" type="VBoxContainer" parent="HUD/DebugSpawnerPanel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 6
+
+[node name="Title" type="Label" parent="HUD/DebugSpawnerPanel/Margin/VBox"]
+layout_mode = 2
+text = "💀 DUNGEON MONSTER SPAWNER"
+theme_override_colors/font_color = Color(0.35, 1.0, 0.55, 1)
+
+[node name="CountLabel" type="Label" parent="HUD/DebugSpawnerPanel/Margin/VBox"]
+layout_mode = 2
+text = "Enemies: 0"
+theme_override_colors/font_color = Color(0.85, 0.85, 0.85, 0.9)
+
+[node name="PlayerHPHBox" type="HBoxContainer" parent="HUD/DebugSpawnerPanel/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="HPTitle" type="Label" parent="HUD/DebugSpawnerPanel/Margin/VBox/PlayerHPHBox"]
+layout_mode = 2
+text = "HP:"
+theme_override_colors/font_color = Color(0.95, 0.35, 0.35, 1)
+
+[node name="ProgressBar" type="ProgressBar" parent="HUD/DebugSpawnerPanel/Margin/VBox/PlayerHPHBox"]
+custom_minimum_size = Vector2(160, 16)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 4
+value = 100.0
+show_percentage = false
+
+[node name="HPValueLabel" type="Label" parent="HUD/DebugSpawnerPanel/Margin/VBox/PlayerHPHBox"]
+layout_mode = 2
+text = "100 / 100"
+theme_override_colors/font_color = Color(0.9, 0.9, 0.9, 1)
+
+[node name="OptionsHBox" type="HBoxContainer" parent="HUD/DebugSpawnerPanel/Margin/VBox"]
+layout_mode = 2
+
+[node name="SpawnAtCursorCheck" type="CheckBox" parent="HUD/DebugSpawnerPanel/Margin/VBox/OptionsHBox"]
+layout_mode = 2
+button_pressed = true
+text = "🎯 Spawn at Cursor"
+
+[node name="OptionsHBox2" type="HBoxContainer" parent="HUD/DebugSpawnerPanel/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="PassiveDummyCheck" type="CheckBox" parent="HUD/DebugSpawnerPanel/Margin/VBox/OptionsHBox2"]
+layout_mode = 2
+text = "🤖 Dummy AI"
+
+[node name="GodModeCheck" type="CheckBox" parent="HUD/DebugSpawnerPanel/Margin/VBox/OptionsHBox2"]
+layout_mode = 2
+text = "🛡️ God Mode"
+
+[node name="ButtonsVBox" type="VBoxContainer" parent="HUD/DebugSpawnerPanel/Margin/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 4
+
+[node name="BtnSwordsman" type="Button" parent="HUD/DebugSpawnerPanel/Margin/VBox/ButtonsVBox"]
+layout_mode = 2
+text = "⚔️ [1] Swordsman [Z]"
+
+[node name="BtnArcher" type="Button" parent="HUD/DebugSpawnerPanel/Margin/VBox/ButtonsVBox"]
+layout_mode = 2
+text = "🏹 [2] Archer [X]"
+
+[node name="BtnMage" type="Button" parent="HUD/DebugSpawnerPanel/Margin/VBox/ButtonsVBox"]
+layout_mode = 2
+text = "🔮 [3] Skeleton Mage"
+
+[node name="BtnSlime" type="Button" parent="HUD/DebugSpawnerPanel/Margin/VBox/ButtonsVBox"]
+layout_mode = 2
+text = "🟢 [4] Slime (Squishy Leap)"
+
+[node name="BtnOrc" type="Button" parent="HUD/DebugSpawnerPanel/Margin/VBox/ButtonsVBox"]
+layout_mode = 2
+text = "🪓 [5] Orc Warrior (Cleaver Slam)"
+
+[node name="BtnSpider" type="Button" parent="HUD/DebugSpawnerPanel/Margin/VBox/ButtonsVBox"]
+layout_mode = 2
+text = "🕷️ [6] Toxic Spider (Venom & Slow)"
+
+[node name="BtnHorde" type="Button" parent="HUD/DebugSpawnerPanel/Margin/VBox/ButtonsVBox"]
+layout_mode = 2
+text = "🔥 [V] Mega Horde (All 6 Types)"
+
+[node name="BtnClear" type="Button" parent="HUD/DebugSpawnerPanel/Margin/VBox/ButtonsVBox"]
+layout_mode = 2
+text = "🧹 [C] Clear All Enemies"
+
+[node name="HintLabel" type="Label" parent="HUD/DebugSpawnerPanel/Margin/VBox"]
+layout_mode = 2
+text = "[1]-[6]: Spawn | [V]: Horde | [C]: Clear | [G]: God | [H]: Heal"
+theme_override_colors/font_color = Color(0.65, 0.65, 0.7, 0.7)
+theme_override_font_sizes/font_size = 11

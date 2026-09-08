@@ -5,12 +5,11 @@ extends Node2D
 ## Feeds dynamic player torchlight to the dungeon floor shader,
 ## manages camera tracking, and displays clean control guides.
 
-@onready var player: CharacterBody2D = $Player
+@onready var player: CharacterBody2D = find_child("Player", true, false) as CharacterBody2D
 @onready var camera: Camera2D = $Camera2D
-@onready var ground_rect: ColorRect = $Arena/GroundRect
+@onready var ground_rect: ColorRect = get_node_or_null("Arena/GroundRect") as ColorRect
 
 func _ready() -> void:
-	DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_ALWAYS_ON_TOP, true)
 	DisplayServer.window_move_to_foreground()
 
 	if ground_rect and ground_rect.material:
@@ -35,3 +34,7 @@ func _process(delta: float) -> void:
 		# Smooth Camera follow
 		if is_instance_valid(camera):
 			camera.global_position = camera.global_position.lerp(player.global_position, 10.0 * delta)
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
+		get_tree().quit()

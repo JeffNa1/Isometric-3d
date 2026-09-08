@@ -1,4 +1,4 @@
-﻿shader_type canvas_item;
+shader_type canvas_item;
 
 // --- AUTHENTIC MEDIEVAL DUNGEON STONE FLAGSTONE SHADER ---
 // Features:
@@ -26,6 +26,12 @@ uniform vec3 torch_color : source_color = vec3(1.0, 0.75, 0.42);
 uniform float torch_radius = 480.0;
 uniform float torch_intensity = 1.35;
 uniform float ambient_light = 0.32;
+
+// Wall Torches
+const int MAX_TORCHES = 8;
+uniform vec2 wall_torch_positions[8];
+uniform float wall_torch_intensities[8];
+uniform int wall_torch_count = 0;
 
 varying vec2 world_pos;
 
@@ -122,13 +128,22 @@ void fragment() {
 	float dist_to_player = length(p_world - player_pos);
 	float flicker = 1.0 + (sin(TIME * 7.2) + cos(TIME * 13.1)) * 0.02;
 	float torch_rad = torch_radius * flicker;
-	float torch_factor = clamp(1.0 - (dist_to_player / torch_rad), 0.0, 1.0);
-	torch_factor = pow(torch_factor, 1.7) * torch_intensity;
+	float player_factor = clamp(1.0 - (dist_to_player / torch_rad), 0.0, 1.0);
+	player_factor = pow(player_factor, 1.7) * torch_intensity;
+
+	float total_torch_factor = player_factor;
+	for (int i = 0; i < wall_torch_count; i++) {
+		if (i >= 8) break;
+		float d_torch = length(p_world - wall_torch_positions[i]);
+		float w_rad = 340.0 * wall_torch_intensities[i] * (1.0 + (sin(TIME * 8.5 + float(i) * 2.1) + cos(TIME * 11.3 + float(i))) * 0.03);
+		float tf = clamp(1.0 - (d_torch / w_rad), 0.0, 1.0);
+		total_torch_factor += pow(tf, 1.6) * 1.25;
+	}
 
 	// Cold dungeon darkness ambient (deep blue-gray, NOT brown)
 	vec3 ambient_rgb = final_floor * ambient_light * vec3(0.65, 0.75, 0.95);
 	// Warm torchlight illumination
-	vec3 torch_rgb = final_floor * torch_color * torch_factor;
+	vec3 torch_rgb = final_floor * torch_color * total_torch_factor;
 
 	COLOR = vec4(ambient_rgb + torch_rgb, 1.0);
 }

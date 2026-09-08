@@ -1,6 +1,6 @@
-﻿[gd_scene load_steps=4 format=3 uid="uid://arena_huge_01"]
+[gd_scene load_steps=4 format=3 uid="uid://arena_huge_01"]
 
-[ext_resource type="Script" path="res://scripts/arena.gd" id="1_arena"]
+[ext_resource type="Script" path="res://scripts/dungeon/arena.gd" id="1_arena"]
 [ext_resource type="Shader" path="res://shaders/medieval_dungeon_floor.gdshader" id="2_shader"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_ground"]
